@@ -161,19 +161,18 @@ def approve_step(module, request_id, remarks):
     conn = get_connection()
     cur = conn.cursor()
 
+    # ✅ Approve current step
     cur.execute("""
-    UPDATE approval_logs
-    SET status='approved', acted_at=%s, remarks=%s
-    WHERE module=%s AND request_id=%s AND status='pending'
+        UPDATE approval_logs
+        SET status='approved', acted_at=%s, remarks=%s
+        WHERE module=%s AND request_id=%s AND status='pending'
     """, (datetime.now(), remarks, module, request_id))
-
-    cur.execute("""
-    UPDATE request_status SET status='approved'
-    WHERE module=%s AND request_id=%s
-    """, (module, request_id))
 
     conn.commit()
     conn.close()
+
+    # ✅ AUTO MOVE TO NEXT STEP
+    return move_to_next_step(module, request_id)
 
 
 def reject_step(module, request_id, remarks):
@@ -212,6 +211,65 @@ def get_workflow_status(module, request_id):
 
     conn.close()
     return {"status": status, "history": history}
+
+
+
+def move_to_next_step(module, request_id):
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    # 1️⃣ Get already approved highest step
+    cur.execute("""
+        SELECT step_order, workflow_id
+        FROM approval_logs
+        WHERE module=%s AND request_id=%s
+        ORDER BY step_order DESC LIMIT 1
+    """, (module, request_id))
+
+    current = cur.fetchone()
+    if not current:
+        conn.close()
+        return {"error": "No workflow started"}
+
+    current_step = current["step_order"]
+    workflow_id = current["workflow_id"]
+
+    # 2️⃣ Get next workflow step
+    cur.execute("""
+        SELECT * FROM workflow_steps
+        WHERE workflow_id=%s AND step_order=%s
+    """, (workflow_id, current_step + 1))
+
+    next_step = cur.fetchone()
+
+    # ✅ If no next step → workflow complete
+    if not next_step:
+        cur.execute("""
+            UPDATE request_status
+            SET status='approved', updated_at=%s
+            WHERE module=%s AND request_id=%s
+        """, (datetime.now(), module, request_id))
+
+        conn.commit()
+        conn.close()
+        return {"message": "Workflow completed"}
+
+    # 3️⃣ Insert next pending step (TEMP approver_id=1 for now)
+    cur.execute("""
+        INSERT INTO approval_logs
+        (module, request_id, workflow_id, step_order, approver_id, status)
+        VALUES (%s,%s,%s,%s,%s,'pending')
+    """, (
+        module,
+        request_id,
+        workflow_id,
+        next_step["step_order"],
+        1  # ✅ TEMP HARD-CODED — will be dynamic later
+    ))
+
+    conn.commit()
+    conn.close()
+    return {"message": f"Moved to step {next_step['step_order']}"}
 
 
 if __name__ == "__main__":

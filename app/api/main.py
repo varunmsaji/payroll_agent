@@ -5,7 +5,7 @@ from app.api.attendence_dashboard import router as attendence_dashboard_router
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.shifts import router as shifts_router
 from app.api.leave_api import router as leave_router
-
+from app.api.workflow_router import router as workflow_router
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -20,3 +20,4 @@ app.include_router(employee_detail_router)
 app.include_router(shifts_router)
 app.include_router(attendence_dashboard_router)
 app.include_router(leave_router)
+app.include_router(workflow_router)
