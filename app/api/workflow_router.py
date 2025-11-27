@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List
-from app.database import workflow_db
+from app.database import workflow_database as workflow_db
 
 router = APIRouter(prefix="/workflow", tags=["Workflow Engine"])
 

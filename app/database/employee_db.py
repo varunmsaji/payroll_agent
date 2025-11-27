@@ -172,6 +172,10 @@ class EmployeeDB:
         # ============================
     # ✅ GET HR USER
     # ============================
+    # ✅ GET HR USER (FIXED)
+      # ============================
+    # ✅ GET HR USER (FIXED ✅)
+    # ============================
     @staticmethod
     def get_hr_user():
         conn = get_connection()
@@ -180,16 +184,18 @@ class EmployeeDB:
         cur.execute("""
             SELECT employee_id 
             FROM employees
-            WHERE department ILIKE '%hr%' 
-            ORDER BY employee_id LIMIT 1
+            WHERE designation ILIKE '%hr%'
+            ORDER BY employee_id 
+            LIMIT 1
         """)
 
         row = cur.fetchone()
         conn.close()
         return row[0] if row else None
 
+
     # ============================
-    # ✅ GET FINANCE HEAD
+    # ✅ GET FINANCE HEAD (FIXED ✅)
     # ============================
     @staticmethod
     def get_finance_head():
@@ -199,16 +205,19 @@ class EmployeeDB:
         cur.execute("""
             SELECT employee_id 
             FROM employees
-            WHERE department ILIKE '%finance%' 
-            ORDER BY employee_id LIMIT 1
+            WHERE designation ILIKE '%finance%'
+               OR designation ILIKE '%account%'
+            ORDER BY employee_id 
+            LIMIT 1
         """)
 
         row = cur.fetchone()
         conn.close()
         return row[0] if row else None
 
+
     # ============================
-    # ✅ GET DIRECTOR / CEO
+    # ✅ GET DIRECTOR / CEO (ALREADY CORRECT ✅)
     # ============================
     @staticmethod
     def get_director():
@@ -220,7 +229,8 @@ class EmployeeDB:
             FROM employees
             WHERE designation ILIKE '%director%' 
                OR designation ILIKE '%ceo%'
-            ORDER BY employee_id LIMIT 1
+            ORDER BY employee_id 
+            LIMIT 1
         """)
 
         row = cur.fetchone()

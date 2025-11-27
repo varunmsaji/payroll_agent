@@ -10,6 +10,9 @@ from app.database.leave_database import (
     EmployeeSalaryDB,
 )
 
+# ✅ IMPORT WORKFLOW ENGINE
+from app.database import workflow_database as workflow_db
+
 router = APIRouter(prefix="/hrms/leaves", tags=["Leaves"])
 
 
@@ -34,14 +37,11 @@ def get_leave_types():
 
 
 # ============================================================
-# 2️⃣ LEAVE BALANCE (Assign leave types to employees)
+# 2️⃣ LEAVE BALANCE
 # ============================================================
 
 @router.post("/balance/init")
 def initialize_balance(req: Dict[str, Any]):
-    """
-    Assign a leave type to an employee for a given year.
-    """
     if not all(k in req for k in ("employee_id", "leave_type_id", "year", "quota")):
         raise HTTPException(400, "employee_id, leave_type_id, year, quota are required")
 
@@ -54,7 +54,6 @@ def initialize_balance(req: Dict[str, Any]):
     )
 
     if res is None:
-        # ON CONFLICT DO NOTHING triggered
         return {"message": "Leave type already assigned for this year"}
 
     return res
@@ -66,17 +65,12 @@ def get_balance(employee_id: int, year: int):
 
 
 # ============================================================
-# 3️⃣ LEAVE REQUESTS - APPLY / LIST
+# 3️⃣ ✅ LEAVE APPLY (AUTO STARTS WORKFLOW)
 # ============================================================
 
 @router.post("/apply")
 def apply_leave(req: Dict[str, Any]):
-    """
-    Apply for leave with validation:
-    - check leave type assigned to employee
-    - check no overlapping approved leave
-    - (optional) check total_days > 0
-    """
+
     required = ["employee_id", "leave_type_id", "start_date", "end_date", "total_days"]
     for key in required:
         if key not in req:
@@ -92,19 +86,18 @@ def apply_leave(req: Dict[str, Any]):
     if total_days <= 0:
         raise HTTPException(400, "total_days must be > 0")
 
-    # year for balance
     year = date.fromisoformat(start_date).year
 
-    # 1. Check if employee has this leave type assigned
+    # ✅ Balance Check
     balance = LeaveBalanceDB.get_single_balance(employee_id, leave_type_id, year)
     if balance is None:
         raise HTTPException(400, "This leave type is not assigned to this employee for this year")
 
-    # 2. Check for overlapping APPROVED leaves
+    # ✅ Overlap Check
     if LeaveRequestDB.has_overlapping_approved_leave(employee_id, start_date, end_date):
-        raise HTTPException(400, "Overlapping approved leave exists for this period")
+        raise HTTPException(400, "Overlapping approved leave exists")
 
-    # (We do NOT deduct balance yet; balance is updated on approval)
+    # ✅ Create Leave
     res = LeaveRequestDB.apply_leave(
         employee_id,
         leave_type_id,
@@ -114,8 +107,22 @@ def apply_leave(req: Dict[str, Any]):
         reason
     )
 
+    # ✅ AUTO START WORKFLOW
+    wf = workflow_db.get_active_workflow("leave")
+    if wf:
+        workflow_db.start_workflow(
+            module="leave",
+            request_id=res["leave_id"],
+            workflow_id=wf["id"],
+            employee_id=employee_id
+        )
+
     return {"message": "Leave applied successfully", "data": res}
 
+
+# ============================================================
+# 4️⃣ REQUEST LISTING
+# ============================================================
 
 @router.get("/requests")
 def get_all_requests():
@@ -133,34 +140,9 @@ def get_employee_requests(employee_id: int):
 
 
 # ============================================================
-# 4️⃣ LEAVE APPROVAL / REJECTION
+# ❌ OLD MANUAL APPROVAL APIS REMOVED
+# Workflow Now Controls Approval
 # ============================================================
-
-@router.post("/approve/{leave_id}")
-def approve_leave(leave_id: int, req: Dict[str, Any]):
-    if "manager_id" not in req:
-        raise HTTPException(400, "manager_id is required")
-
-    manager_id = req["manager_id"]
-
-    try:
-        result = LeaveRequestDB.approve_leave_transaction(leave_id, manager_id)
-        return {"message": "Leave approved", "data": result}
-    except Exception as e:
-        # Map business errors to HTTP
-        raise HTTPException(400, str(e))
-
-
-@router.post("/reject/{leave_id}")
-def reject_leave(leave_id: int, req: Dict[str, Any]):
-    if "manager_id" not in req:
-        raise HTTPException(400, "manager_id is required")
-
-    res = LeaveRequestDB.reject_leave(leave_id, req["manager_id"])
-    if not res:
-        raise HTTPException(404, "Leave request not found")
-
-    return {"message": "Leave rejected", "data": res}
 
 
 # ============================================================
@@ -173,36 +155,21 @@ def get_leave_history(employee_id: int):
 
 
 # ============================================================
-# 6️⃣ SALARY CALCULATION BASED ON LEAVES
+# 6️⃣ SALARY BASED ON LEAVES
 # ============================================================
 
 @router.get("/salary/{employee_id}/{year}/{month}")
 def calculate_salary_after_leaves(employee_id: int, year: int, month: int):
-    """
-    Calculates final salary based on:
-    - base_salary from employees table
-    - unpaid leave days in leave_history (where leave_types.is_paid = FALSE)
 
-    Simple formula:
-        daily_salary = base_salary / 30
-        deduction    = unpaid_days * daily_salary
-        final_salary = base_salary - deduction
-    """
-
-    # 1. Base salary
     emp_row = EmployeeSalaryDB.get_base_salary(employee_id)
     if not emp_row or emp_row.get("base_salary") is None:
         raise HTTPException(404, "Employee or base salary not found")
 
     base_salary = float(emp_row["base_salary"])
 
-    # 2. Unpaid leave days
     unpaid_days = LeaveHistoryDB.get_unpaid_leave_days(employee_id, year, month)
+    unpaid_days = max(unpaid_days, 0)
 
-    if unpaid_days < 0:
-        unpaid_days = 0
-
-    # 3. Salary calculation
     daily_salary = base_salary / 30.0
     deduction = unpaid_days * daily_salary
     final_salary = base_salary - deduction

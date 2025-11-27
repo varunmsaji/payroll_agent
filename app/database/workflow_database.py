@@ -202,11 +202,14 @@ def approve_step(module, request_id, remarks):
 # ================================
 # ✅ MOVE TO NEXT STEP (FIXED ✅)
 # ================================
+# ================================
+# ✅ MOVE TO NEXT STEP (FINAL + LEAVE SYNC ✅✅✅)
+# ================================
 def move_to_next_step(module, request_id):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    # Get last approved step
+    # ✅ Get last approved step
     cur.execute("""
         SELECT step_order, workflow_id
         FROM approval_logs
@@ -222,7 +225,7 @@ def move_to_next_step(module, request_id):
     current_step = current["step_order"]
     workflow_id = current["workflow_id"]
 
-    # Get next step
+    # ✅ Get next step
     cur.execute("""
         SELECT * FROM workflow_steps
         WHERE workflow_id=%s AND step_order=%s
@@ -230,8 +233,11 @@ def move_to_next_step(module, request_id):
 
     next_step = cur.fetchone()
 
-    # ✅ FINAL APPROVAL
+    # =========================================================
+    # ✅✅✅✅ FINAL APPROVAL — UPDATE LEAVE TABLE ALSO ✅✅✅✅
+    # =========================================================
     if not next_step:
+        # ✅ Update workflow status
         cur.execute("""
             UPDATE request_status
             SET status='approved', updated_at=%s
@@ -240,9 +246,26 @@ def move_to_next_step(module, request_id):
 
         conn.commit()
         conn.close()
-        return {"message": "Workflow completed (Final Approval)"}
 
-    # ⚠️ TEMP: assuming request_id == employee_id (testing safe)
+        # ✅ IF THIS IS LEAVE → ALSO APPROVE LEAVE + DEDUCT BALANCE
+        if module == "leave":
+            from app.database.leave_database import LeaveRequestDB
+
+            # ✅ This updates:
+            # - leave_requests.status = approved
+            # - leave_history insert
+            # - employee_leave_balance deduction
+            LeaveRequestDB.approve_leave_transaction(request_id, manager_id=31)
+
+        return {
+            "message": "Workflow completed (Final Approval) + Leave Approved ✅"
+        }
+
+    # =========================================================
+    # ✅ MOVE TO NEXT APPROVER
+    # =========================================================
+
+    # ⚠️ TEMP TEST ASSUMPTION: request_id == employee_id
     employee_id = request_id
 
     approver_id = resolve_approver_by_role(
@@ -253,7 +276,7 @@ def move_to_next_step(module, request_id):
         conn.close()
         return {"error": f"No approver found for role: {next_step['role']}"}
 
-    # Insert next step
+    # ✅ Insert next step
     cur.execute("""
         INSERT INTO approval_logs
         (module, request_id, workflow_id, step_order, approver_id, status)
@@ -274,6 +297,7 @@ def move_to_next_step(module, request_id):
         "assigned_to": approver_id,
         "role": next_step["role"]
     }
+
 
 
 # ================================
