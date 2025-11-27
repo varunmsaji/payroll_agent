@@ -169,3 +169,60 @@ class EmployeeDB:
         conn.commit()
         conn.close()
         return True
+        # ============================
+    # ✅ GET HR USER
+    # ============================
+    @staticmethod
+    def get_hr_user():
+        conn = get_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT employee_id 
+            FROM employees
+            WHERE department ILIKE '%hr%' 
+            ORDER BY employee_id LIMIT 1
+        """)
+
+        row = cur.fetchone()
+        conn.close()
+        return row[0] if row else None
+
+    # ============================
+    # ✅ GET FINANCE HEAD
+    # ============================
+    @staticmethod
+    def get_finance_head():
+        conn = get_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT employee_id 
+            FROM employees
+            WHERE department ILIKE '%finance%' 
+            ORDER BY employee_id LIMIT 1
+        """)
+
+        row = cur.fetchone()
+        conn.close()
+        return row[0] if row else None
+
+    # ============================
+    # ✅ GET DIRECTOR / CEO
+    # ============================
+    @staticmethod
+    def get_director():
+        conn = get_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT employee_id 
+            FROM employees
+            WHERE designation ILIKE '%director%' 
+               OR designation ILIKE '%ceo%'
+            ORDER BY employee_id LIMIT 1
+        """)
+
+        row = cur.fetchone()
+        conn.close()
+        return row[0] if row else None

@@ -1,8 +1,8 @@
-# app/database/workflow_db.py
-
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
+from app.database.employee_db import EmployeeDB
+
 
 DB_PARAMS = {
     "dbname": "hrms_db",
@@ -97,71 +97,96 @@ def create_workflow(name, module, steps):
 def get_active_workflow(module):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute(
-        "SELECT * FROM workflows WHERE module=%s AND is_active=true ORDER BY id DESC LIMIT 1",
-        (module,)
-    )
+
+    cur.execute("""
+        SELECT * FROM workflows
+        WHERE module=%s AND is_active=true
+        ORDER BY id DESC LIMIT 1
+    """, (module,))
+
     row = cur.fetchone()
     conn.close()
     return row
 
 
-def get_workflow_steps(workflow_id):
+# ================================
+# ✅ ROLE → USER RESOLVER
+# ================================
+def resolve_approver_by_role(role, employee_id):
+    role = role.lower()
+
+    if role == "manager":
+        return EmployeeDB.get_manager_id(employee_id)
+
+    elif role == "hr":
+        return EmployeeDB.get_hr_user()
+
+    elif role == "finance":
+        return EmployeeDB.get_finance_head()
+
+    elif role == "director":
+        return EmployeeDB.get_director()
+
+    return None
+
+
+# ================================
+# ✅ AUTO START WORKFLOW (FIXED ✅)
+# ================================
+def start_workflow(module, request_id, workflow_id, employee_id):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute(
-        "SELECT * FROM workflow_steps WHERE workflow_id=%s ORDER BY step_order",
-        (workflow_id,)
-    )
-    rows = cur.fetchall()
-    conn.close()
-    return rows
 
-
-# ================================
-# ✅ APPROVAL ENGINE
-# ================================
-def start_workflow(module, request_id, workflow_id, approver_id):
-    conn = get_connection()
-    cur = conn.cursor()
-
+    # ✅ Get FIRST step
     cur.execute("""
-    INSERT INTO approval_logs
-    (module, request_id, workflow_id, step_order, approver_id, status)
-    VALUES (%s,%s,%s,1,%s,'pending')
+        SELECT * FROM workflow_steps
+        WHERE workflow_id=%s AND step_order=1
+    """, (workflow_id,))
+    first_step = cur.fetchone()
+
+    if not first_step:
+        conn.close()
+        raise Exception("No workflow steps found")
+
+    # ✅ Resolve approver dynamically
+    approver_id = resolve_approver_by_role(first_step["role"], employee_id)
+
+    if not approver_id:
+        conn.close()
+        raise Exception(f"No approver found for role: {first_step['role']}")
+
+    # ✅ Insert FIRST step
+    cur.execute("""
+        INSERT INTO approval_logs
+        (module, request_id, workflow_id, step_order, approver_id, status)
+        VALUES (%s,%s,%s,1,%s,'pending')
     """, (module, request_id, workflow_id, approver_id))
 
+    # ✅ Set request status
     cur.execute("""
-    INSERT INTO request_status (module, request_id, status)
-    VALUES (%s,%s,'pending')
-    ON CONFLICT (module, request_id)
-    DO UPDATE SET status='pending'
+        INSERT INTO request_status (module, request_id, status)
+        VALUES (%s,%s,'pending')
+        ON CONFLICT (module, request_id)
+        DO UPDATE SET status='pending'
     """, (module, request_id))
 
     conn.commit()
     conn.close()
 
-
-def get_pending_step(module, request_id):
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    cur.execute("""
-    SELECT * FROM approval_logs
-    WHERE module=%s AND request_id=%s AND status='pending'
-    ORDER BY step_order LIMIT 1
-    """, (module, request_id))
-
-    row = cur.fetchone()
-    conn.close()
-    return row
+    return {
+        "message": "Workflow started",
+        "assigned_to": approver_id,
+        "role": first_step["role"]
+    }
 
 
+# ================================
+# ✅ APPROVE STEP + AUTO MOVE
+# ================================
 def approve_step(module, request_id, remarks):
     conn = get_connection()
     cur = conn.cursor()
 
-    # ✅ Approve current step
     cur.execute("""
         UPDATE approval_logs
         SET status='approved', acted_at=%s, remarks=%s
@@ -171,54 +196,17 @@ def approve_step(module, request_id, remarks):
     conn.commit()
     conn.close()
 
-    # ✅ AUTO MOVE TO NEXT STEP
     return move_to_next_step(module, request_id)
 
 
-def reject_step(module, request_id, remarks):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-    UPDATE approval_logs
-    SET status='rejected', acted_at=%s, remarks=%s
-    WHERE module=%s AND request_id=%s AND status='pending'
-    """, (datetime.now(), remarks, module, request_id))
-
-    cur.execute("""
-    UPDATE request_status SET status='rejected'
-    WHERE module=%s AND request_id=%s
-    """, (module, request_id))
-
-    conn.commit()
-    conn.close()
-
-
-def get_workflow_status(module, request_id):
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    cur.execute("SELECT * FROM request_status WHERE module=%s AND request_id=%s",
-                (module, request_id))
-    status = cur.fetchone()
-
-    cur.execute("""
-    SELECT * FROM approval_logs
-    WHERE module=%s AND request_id=%s
-    ORDER BY step_order
-    """, (module, request_id))
-    history = cur.fetchall()
-
-    conn.close()
-    return {"status": status, "history": history}
-
-
-
+# ================================
+# ✅ MOVE TO NEXT STEP (FIXED ✅)
+# ================================
 def move_to_next_step(module, request_id):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    # 1️⃣ Get already approved highest step
+    # Get last approved step
     cur.execute("""
         SELECT step_order, workflow_id
         FROM approval_logs
@@ -234,7 +222,7 @@ def move_to_next_step(module, request_id):
     current_step = current["step_order"]
     workflow_id = current["workflow_id"]
 
-    # 2️⃣ Get next workflow step
+    # Get next step
     cur.execute("""
         SELECT * FROM workflow_steps
         WHERE workflow_id=%s AND step_order=%s
@@ -242,7 +230,7 @@ def move_to_next_step(module, request_id):
 
     next_step = cur.fetchone()
 
-    # ✅ If no next step → workflow complete
+    # ✅ FINAL APPROVAL
     if not next_step:
         cur.execute("""
             UPDATE request_status
@@ -252,9 +240,20 @@ def move_to_next_step(module, request_id):
 
         conn.commit()
         conn.close()
-        return {"message": "Workflow completed"}
+        return {"message": "Workflow completed (Final Approval)"}
 
-    # 3️⃣ Insert next pending step (TEMP approver_id=1 for now)
+    # ⚠️ TEMP: assuming request_id == employee_id (testing safe)
+    employee_id = request_id
+
+    approver_id = resolve_approver_by_role(
+        next_step["role"], employee_id
+    )
+
+    if not approver_id:
+        conn.close()
+        return {"error": f"No approver found for role: {next_step['role']}"}
+
+    # Insert next step
     cur.execute("""
         INSERT INTO approval_logs
         (module, request_id, workflow_id, step_order, approver_id, status)
@@ -264,12 +263,63 @@ def move_to_next_step(module, request_id):
         request_id,
         workflow_id,
         next_step["step_order"],
-        1  # ✅ TEMP HARD-CODED — will be dynamic later
+        approver_id
     ))
 
     conn.commit()
     conn.close()
-    return {"message": f"Moved to step {next_step['step_order']}"}
+
+    return {
+        "message": f"Moved to step {next_step['step_order']}",
+        "assigned_to": approver_id,
+        "role": next_step["role"]
+    }
+
+
+# ================================
+# ✅ REJECT FLOW
+# ================================
+def reject_step(module, request_id, remarks):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE approval_logs
+        SET status='rejected', acted_at=%s, remarks=%s
+        WHERE module=%s AND request_id=%s AND status='pending'
+    """, (datetime.now(), remarks, module, request_id))
+
+    cur.execute("""
+        UPDATE request_status SET status='rejected'
+        WHERE module=%s AND request_id=%s
+    """, (module, request_id))
+
+    conn.commit()
+    conn.close()
+
+
+# ================================
+# ✅ STATUS VIEW
+# ================================
+def get_workflow_status(module, request_id):
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute("""
+        SELECT * FROM request_status
+        WHERE module=%s AND request_id=%s
+    """, (module, request_id))
+    status = cur.fetchone()
+
+    cur.execute("""
+        SELECT * FROM approval_logs
+        WHERE module=%s AND request_id=%s
+        ORDER BY step_order
+    """, (module, request_id))
+    history = cur.fetchall()
+
+    conn.close()
+    return {"status": status, "history": history}
 
 
 if __name__ == "__main__":

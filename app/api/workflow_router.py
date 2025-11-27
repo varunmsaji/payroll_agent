@@ -1,9 +1,7 @@
-# app/api/workflow_router.py
-
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List
-from app.database import workflow_database as workflow_db
+from app.database import workflow_db
 
 router = APIRouter(prefix="/workflow", tags=["Workflow Engine"])
 
@@ -23,8 +21,9 @@ class WorkflowCreate(BaseModel):
     steps: List[Step]
 
 
+# ✅ FIXED: Now we pass employee_id (NOT approver_id)
 class StartWorkflow(BaseModel):
-    approver_id: int
+    employee_id: int
 
 
 class Action(BaseModel):
@@ -34,6 +33,7 @@ class Action(BaseModel):
 # ================================
 # ✅ ROUTES
 # ================================
+
 @router.post("/create")
 def create_workflow(req: WorkflowCreate):
     wf_id = workflow_db.create_workflow(
@@ -42,21 +42,32 @@ def create_workflow(req: WorkflowCreate):
     return {"message": "Workflow created", "workflow_id": wf_id}
 
 
+# ✅ ✅ ✅ FIXED AUTO-START WORKFLOW
 @router.post("/{module}/start/{request_id}")
 def start_workflow(module: str, request_id: int, req: StartWorkflow):
     wf = workflow_db.get_active_workflow(module)
-    workflow_db.start_workflow(module, request_id, wf["id"], req.approver_id)
-    return {"message": "Workflow Started"}
+
+    if not wf:
+        raise HTTPException(status_code=404, detail="No active workflow found")
+
+    result = workflow_db.start_workflow(
+        module,
+        request_id,
+        wf["id"],
+        req.employee_id   # ✅ used for manager resolution
+    )
+
+    return result
 
 
 @router.post("/{module}/{request_id}/approve")
 def approve(module: str, request_id: int, req: Action):
     result = workflow_db.approve_step(module, request_id, req.remarks)
+
     return {
         "message": "Step Approved",
         "next_step": result
     }
-
 
 
 @router.post("/{module}/{request_id}/reject")
