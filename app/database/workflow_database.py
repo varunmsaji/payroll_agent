@@ -2,6 +2,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
 from app.database.employee_db import EmployeeDB
+from app.database.leave_database import LeaveRequestDB
 
 
 DB_PARAMS = {
@@ -307,12 +308,14 @@ def reject_step(module, request_id, remarks):
     conn = get_connection()
     cur = conn.cursor()
 
+    # ✅ Update approval log
     cur.execute("""
         UPDATE approval_logs
         SET status='rejected', acted_at=%s, remarks=%s
         WHERE module=%s AND request_id=%s AND status='pending'
     """, (datetime.now(), remarks, module, request_id))
 
+    # ✅ Update workflow status
     cur.execute("""
         UPDATE request_status SET status='rejected'
         WHERE module=%s AND request_id=%s
@@ -320,6 +323,14 @@ def reject_step(module, request_id, remarks):
 
     conn.commit()
     conn.close()
+
+    # ✅ ✅ CRITICAL FIX: Reject Leave Itself
+    if module == "leave":
+        LeaveRequestDB.update_leave_status_only(request_id, "rejected")
+
+    return {
+        "message": "Workflow rejected and leave rejected"
+    }
 
 
 # ================================

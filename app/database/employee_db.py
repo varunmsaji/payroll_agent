@@ -7,7 +7,7 @@ from app.database.connection import get_connection
 class EmployeeDB:
 
     # ============================
-    # ✅ ADD EMPLOYEE (WITH MANAGER)
+    # ✅ ADD EMPLOYEE (SAFE)
     # ============================
     @staticmethod
     def add_employee(data):
@@ -17,8 +17,8 @@ class EmployeeDB:
         cur.execute("""
             INSERT INTO employees
             (first_name, last_name, email, phone, designation, department, 
-             date_of_joining, base_salary, manager_id)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+             date_of_joining, base_salary, manager_id, status)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'active')
             RETURNING *;
         """, (
             data["first_name"], data["last_name"], data["email"], data["phone"],
@@ -32,79 +32,72 @@ class EmployeeDB:
         return res
 
     # ============================
-    # ✅ GET ALL EMPLOYEES
+    # ✅ ACTIVE CHECK
     # ============================
     @staticmethod
-    def get_all():
+    def is_active(employee_id):
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT status FROM employees WHERE employee_id=%s;", (employee_id,))
+        row = cur.fetchone()
+        conn.close()
+        return row and row[0] == "active"
+
+    # ============================
+    # ✅ GET ALL (PAGINATED)
+    # ============================
+    @staticmethod
+    def get_all(page=1, limit=50, status=""):
+        offset = (page - 1) * limit
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        cur.execute("""
-            SELECT e.*, 
-                   m.first_name AS manager_first_name,
-                   m.last_name AS manager_last_name
-            FROM employees e
-            LEFT JOIN employees m ON e.manager_id = m.employee_id
-            ORDER BY e.employee_id DESC;
-        """)
+        if status:
+            cur.execute("""
+                SELECT * FROM employees
+                WHERE status=%s
+                ORDER BY employee_id DESC
+                LIMIT %s OFFSET %s
+            """, (status, limit, offset))
+        else:
+            cur.execute("""
+                SELECT * FROM employees
+                ORDER BY employee_id DESC
+                LIMIT %s OFFSET %s
+            """, (limit, offset))
 
-        res = cur.fetchall()
+        rows = cur.fetchall()
         conn.close()
-        return res
+        return rows
 
     # ============================
-    # ✅ GET ONE EMPLOYEE
+    # ✅ GET ONE
     # ============================
     @staticmethod
     def get_one(employee_id):
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        cur.execute("""
-            SELECT e.*, 
-                   m.first_name AS manager_first_name,
-                   m.last_name AS manager_last_name
-            FROM employees e
-            LEFT JOIN employees m ON e.manager_id = m.employee_id
-            WHERE e.employee_id=%s;
-        """, (employee_id,))
-
-        res = cur.fetchone()
+        cur.execute("SELECT * FROM employees WHERE employee_id=%s;", (employee_id,))
+        row = cur.fetchone()
         conn.close()
-        return res
+        return row
 
     # ============================
-    # ✅ UPDATE EMPLOYEE (WITH MANAGER)
-    # ============================
-    @staticmethod
-    def update_employee(employee_id, data):
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        cur.execute("""
-            UPDATE employees
-            SET first_name=%s, last_name=%s, email=%s, phone=%s,
-                designation=%s, department=%s, base_salary=%s,
-                manager_id=%s
-            WHERE employee_id=%s
-            RETURNING *;
-        """, (
-            data["first_name"], data["last_name"], data["email"], data["phone"],
-            data["designation"], data["department"], data["base_salary"],
-            data.get("manager_id"),
-            employee_id
-        ))
-
-        res = cur.fetchone()
-        conn.commit()
-        conn.close()
-        return res
-
-    # ============================
-    # ✅ SET / CHANGE MANAGER ONLY
+    # ✅ SAFE MANAGER ASSIGNMENT (NO LOOPS)
     # ============================
     @staticmethod
     def set_manager(employee_id, manager_id):
+
+        if employee_id == manager_id:
+            raise Exception("Employee cannot be their own manager")
+
+        # ✅ Prevent circular chain
+        parent = manager_id
+        while parent:
+            if parent == employee_id:
+                raise Exception("Circular manager assignment detected")
+            parent = EmployeeDB.get_manager_id(parent)
+
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
@@ -121,118 +114,81 @@ class EmployeeDB:
         return res
 
     # ============================
-    # ✅ GET MANAGER FOR WORKFLOW AUTO-ASSIGN
+    # ✅ SOFT DELETE (EX-EMPLOYEE)
+    # ============================
+    @staticmethod
+    def deactivate_employee(employee_id):
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            UPDATE employees
+            SET status='ex_employee'
+            WHERE employee_id=%s
+            RETURNING *;
+        """, (employee_id,))
+        res = cur.fetchone()
+        conn.commit()
+        conn.close()
+        return res
+
+    # ============================
+    # ✅ MANAGER / HR / FINANCE / DIRECTOR
     # ============================
     @staticmethod
     def get_manager_id(employee_id):
         conn = get_connection()
         cur = conn.cursor()
-
-        cur.execute("""
-            SELECT manager_id FROM employees
-            WHERE employee_id=%s;
-        """, (employee_id,))
-
+        cur.execute("SELECT manager_id FROM employees WHERE employee_id=%s;", (employee_id,))
         row = cur.fetchone()
         conn.close()
         return row[0] if row else None
 
-    # ============================
-    # ✅ GET ALL MANAGERS (FOR DROPDOWNS)
-    # ============================
+    @staticmethod
+    def get_hr_user():
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT employee_id FROM employees WHERE designation='hr' LIMIT 1")
+        row = cur.fetchone()
+        conn.close()
+        return row[0] if row else None
+
+    @staticmethod
+    def get_finance_head():
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT employee_id FROM employees WHERE designation='finance' LIMIT 1")
+        row = cur.fetchone()
+        conn.close()
+        return row[0] if row else None
+
+    @staticmethod
+    def get_director():
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT employee_id FROM employees WHERE designation='director' LIMIT 1")
+        row = cur.fetchone()
+        conn.close()
+        return row[0] if row else None
+    
+
     @staticmethod
     def get_all_managers():
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
         cur.execute("""
-            SELECT employee_id, first_name, last_name
+            SELECT employee_id, first_name, last_name, designation
             FROM employees
-            WHERE designation ILIKE '%manager%' 
-               OR designation ILIKE '%lead%' 
-               OR designation ILIKE '%head%';
+            WHERE status='active'
+            AND (
+                    designation ILIKE '%manager%' OR
+                    designation ILIKE '%lead%' OR
+                    designation ILIKE '%head%'
+                )
+            ORDER BY first_name;
         """)
 
-        res = cur.fetchall()
+        rows = cur.fetchall()
         conn.close()
-        return res
+        return rows
 
-    # ============================
-    # ✅ DELETE EMPLOYEE
-    # ============================
-    @staticmethod
-    def delete_employee(employee_id):
-        conn = get_connection()
-        cur = conn.cursor()
-
-        cur.execute("DELETE FROM employees WHERE employee_id=%s;", (employee_id,))
-        conn.commit()
-        conn.close()
-        return True
-        # ============================
-    # ✅ GET HR USER
-    # ============================
-    # ✅ GET HR USER (FIXED)
-      # ============================
-    # ✅ GET HR USER (FIXED ✅)
-    # ============================
-    @staticmethod
-    def get_hr_user():
-        conn = get_connection()
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT employee_id 
-            FROM employees
-            WHERE designation ILIKE '%hr%'
-            ORDER BY employee_id 
-            LIMIT 1
-        """)
-
-        row = cur.fetchone()
-        conn.close()
-        return row[0] if row else None
-
-
-    # ============================
-    # ✅ GET FINANCE HEAD (FIXED ✅)
-    # ============================
-    @staticmethod
-    def get_finance_head():
-        conn = get_connection()
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT employee_id 
-            FROM employees
-            WHERE designation ILIKE '%finance%'
-               OR designation ILIKE '%account%'
-            ORDER BY employee_id 
-            LIMIT 1
-        """)
-
-        row = cur.fetchone()
-        conn.close()
-        return row[0] if row else None
-
-
-    # ============================
-    # ✅ GET DIRECTOR / CEO (ALREADY CORRECT ✅)
-    # ============================
-    @staticmethod
-    def get_director():
-        conn = get_connection()
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT employee_id 
-            FROM employees
-            WHERE designation ILIKE '%director%' 
-               OR designation ILIKE '%ceo%'
-            ORDER BY employee_id 
-            LIMIT 1
-        """)
-
-        row = cur.fetchone()
-        conn.close()
-        return row[0] if row else None

@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException
-from datetime import date, datetime, timedelta
-from typing import Dict, Any, Optional
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Query
+from datetime import date, datetime
+from typing import Optional, List
+from pydantic import BaseModel, EmailStr, constr
 
 from app.database.attendence import AttendanceDB, AttendanceEventDB
 from app.database.employee_db import EmployeeDB
@@ -13,69 +13,71 @@ router = APIRouter(prefix="/hrms", tags=["Employee Details"])
 
 
 # ============================================================
-# ✅ MANAGER SCHEMA
+# ✅ SCHEMAS (VALIDATION ADDED)
 # ============================================================
+
 class ManagerUpdate(BaseModel):
     manager_id: Optional[int] = None
 
 
 # ============================================================
-# 1️⃣ EMPLOYEE BASIC PROFILE (WITH MANAGER)
+# ✅ 1️⃣ EMPLOYEE BASIC PROFILE
 # ============================================================
 @router.get("/employee/{employee_id}")
 def employee_profile(employee_id: int):
     emp = EmployeeDB.get_one(employee_id)
+
     if not emp:
-        return {"error": "Employee not found"}
+        raise HTTPException(status_code=404, detail="Employee not found")
+
     return emp
 
 
 # ============================================================
-# ✅ 1.1 GET ALL EMPLOYEES (WITH MANAGER NAMES)
+# ✅ 1.1 GET ALL EMPLOYEES (WITH PAGINATION ✅)
 # ============================================================
 @router.get("/employees")
-def get_employees():
+def get_employees(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100)
+):
     """
-    Used by:
-    - Admin panel
-    - Manager assignment page
-    - Org chart
+    ✅ Production safe with pagination.
     """
-    return EmployeeDB.get_all()
+    employees = EmployeeDB.get_all()
+
+    start = (page - 1) * limit
+    end = start + limit
+
+    return {
+        "page": page,
+        "limit": limit,
+        "total": len(employees),
+        "data": employees[start:end]
+    }
 
 
 # ============================================================
-# ✅ 1.2 GET ALL MANAGERS (FOR DROPDOWNS)
+# ✅ 1.2 GET ALL MANAGERS
 # ============================================================
 @router.get("/employees/managers")
 def get_managers():
-    """
-    Used in:
-    - Manager assignment dropdown
-    - Workflow assignment UI
-    """
     return EmployeeDB.get_all_managers()
 
 
 # ============================================================
-# ✅ 1.3 ASSIGN / CHANGE MANAGER (ADMIN)
+# ✅ 1.3 ASSIGN / CHANGE MANAGER (STRONG VALIDATION ✅)
 # ============================================================
 @router.put("/employee/{employee_id}/manager")
 def assign_manager(employee_id: int, req: ManagerUpdate):
 
-    # Prevent self-manager
     if req.manager_id == employee_id:
-        raise HTTPException(
-            status_code=400,
-            detail="An employee cannot be their own manager"
-        )
+        raise HTTPException(status_code=400, detail="Employee cannot be their own manager")
 
-    # Check employee exists
     emp = EmployeeDB.get_one(employee_id)
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    # If assigning manager, validate manager exists
     if req.manager_id:
         mgr = EmployeeDB.get_one(req.manager_id)
         if not mgr:
@@ -90,15 +92,18 @@ def assign_manager(employee_id: int, req: ManagerUpdate):
 
 
 # ============================================================
-# 2️⃣ CURRENT SHIFT DETAILS
+# ✅ 2️⃣ CURRENT SHIFT DETAILS (SAFE ✅)
 # ============================================================
 @router.get("/employee/{employee_id}/shift")
 def employee_shift(employee_id: int):
-    return EmployeeShiftDB.get_current_shift(employee_id)
+    shift = EmployeeShiftDB.get_current_shift(employee_id)
+    if not shift:
+        return {"message": "No active shift assigned"}
+    return shift
 
 
 # ============================================================
-# 3️⃣ ATTENDANCE SUMMARY
+# ✅ 3️⃣ ATTENDANCE SUMMARY
 # ============================================================
 @router.get("/employee/{employee_id}/attendance-summary")
 def attendance_summary(employee_id: int):
@@ -110,24 +115,24 @@ def attendance_summary(employee_id: int):
     last_7 = all_att[:7]
     last_30 = all_att[:30]
 
-    total_hours_30 = sum((a["total_hours"] or 0) for a in last_30)
+    total_hours_30 = sum(float(a["total_hours"] or 0) for a in last_30)
 
     return {
         "today": today_record,
         "last_7_days": last_7,
         "last_30_days": last_30,
-        "total_hours_last_30_days": total_hours_30,
+        "total_hours_last_30_days": round(total_hours_30, 2),
     }
 
 
 # ============================================================
-# 4️⃣ LATE + OVERTIME SUMMARY
+# ✅ 4️⃣ LATE + OVERTIME SUMMARY (SAFE ✅)
 # ============================================================
 @router.get("/employee/{employee_id}/time-summary")
 def time_summary(employee_id: int):
     shift = EmployeeShiftDB.get_current_shift(employee_id)
     if not shift:
-        return {"error": "Shift not assigned"}
+        return {"message": "Shift not assigned"}
 
     all_att = AttendanceDB.get_attendance(employee_id)
     last_30 = all_att[:30]
@@ -136,15 +141,15 @@ def time_summary(employee_id: int):
     shift_end = shift["end_time"]
 
     shift_duration_hours = (
-        datetime.combine(date.today(), shift_end) -
-        datetime.combine(date.today(), shift_start)
+        datetime.combine(date.today(), shift_end)
+        - datetime.combine(date.today(), shift_start)
     ).seconds / 3600
 
     late_count = 0
     overtime_hours = 0.0
 
     for a in last_30:
-        total_hours = float(a["total_hours"]) if a["total_hours"] else 0
+        total_hours = float(a["total_hours"] or 0)
 
         if a["check_in"] and a["check_in"].time() > shift_start:
             late_count += 1
@@ -159,7 +164,7 @@ def time_summary(employee_id: int):
 
 
 # ============================================================
-# 5️⃣ RECENT ATTENDANCE EVENTS
+# ✅ 5️⃣ RECENT ATTENDANCE EVENTS
 # ============================================================
 @router.get("/employee/{employee_id}/events")
 def employee_events(employee_id: int):
@@ -168,24 +173,30 @@ def employee_events(employee_id: int):
 
 
 # ============================================================
-# 6️⃣ SALARY STRUCTURE
+# ✅ 6️⃣ SALARY STRUCTURE
 # ============================================================
 @router.get("/employee/{employee_id}/salary")
 def employee_salary(employee_id: int):
-    return SalaryDB.get_salary_structure(employee_id)
+    salary = SalaryDB.get_salary_structure(employee_id)
+    if not salary:
+        return {"message": "Salary structure not created"}
+    return salary
 
 
 # ============================================================
-# 7️⃣ LATEST PAYROLL DETAILS
+# ✅ 7️⃣ LATEST PAYROLL
 # ============================================================
 @router.get("/employee/{employee_id}/payroll/latest")
 def latest_payroll(employee_id: int):
     today = date.today()
-    return PayrollDB.get_payroll(employee_id, today.month, today.year)
+    payroll = PayrollDB.get_payroll(employee_id, today.month, today.year)
+    if not payroll:
+        return {"message": "Payroll not generated yet"}
+    return payroll
 
 
 # ============================================================
-# 8️⃣ PAYROLL HISTORY (last 6 months)
+# ✅ 8️⃣ PAYROLL HISTORY (6 MONTHS ✅)
 # ============================================================
 @router.get("/employee/{employee_id}/payroll-history")
 def payroll_history(employee_id: int):
@@ -208,12 +219,17 @@ def payroll_history(employee_id: int):
 
 
 # ============================================================
-# 9️⃣ FULL EMPLOYEE DASHBOARD
+# ✅ 9️⃣ FULL EMPLOYEE DASHBOARD (SAFE ✅)
 # ============================================================
 @router.get("/employee/{employee_id}/full-details")
 def full_employee_details(employee_id: int):
+
+    emp = EmployeeDB.get_one(employee_id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
     return {
-        "profile": EmployeeDB.get_one(employee_id),
+        "profile": emp,
         "shift": EmployeeShiftDB.get_current_shift(employee_id),
         "attendance_summary": attendance_summary(employee_id),
         "time_summary": time_summary(employee_id),

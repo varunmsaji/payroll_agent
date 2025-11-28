@@ -7,10 +7,10 @@ BASE_URL = "http://127.0.0.1:8000"
 # =========================
 # ✅ YOUR REAL CONFIG
 # =========================
-EMPLOYEE_ID = 32      # ✅ Your employee
-MANAGER_ID = 27       # ✅ Manager of employee 32
-HR_ID = 2             # ⚠️ Change only if your HR employee ID is different
-LEAVE_TYPE_ID = 1     # ⚠️ Must exist in leave_types table
+EMPLOYEE_ID = 32      # ✅ Employee
+MANAGER_ID = 27       # ✅ Manager
+HR_ID = 31            # ✅ HR (confirmed)
+LEAVE_TYPE_ID = 1
 YEAR = 2025
 
 
@@ -69,7 +69,7 @@ def test_init_balance():
 
 
 # =========================
-# ✅ 3️⃣ APPLY LEAVE
+# ✅ 3️⃣ APPLY LEAVE (SAFE FUTURE DATES ✅)
 # =========================
 def test_apply_leave():
     print("\n--- Applying Leave ---")
@@ -77,8 +77,8 @@ def test_apply_leave():
     payload = {
         "employee_id": EMPLOYEE_ID,
         "leave_type_id": LEAVE_TYPE_ID,
-        "start_date": "2025-11-29",
-        "end_date": "2025-11-30",
+        "start_date": "2025-12-20",
+        "end_date": "2025-12-21",
         "total_days": 2,
         "reason": "Medical Test"
     }
@@ -105,6 +105,7 @@ def test_workflow_started(leave_id):
         fail("Workflow not started automatically")
 
     data = r.json()
+
     if data["status"]["status"] != "pending":
         fail("Workflow status is not pending")
 
@@ -126,14 +127,11 @@ def test_manager_approve(leave_id):
     if r.status_code != 200:
         fail(f"Manager approval failed → {r.text}")
 
-    print("🔍 RAW RESPONSE FROM API:", r.json())  # ✅ ADD THIS LINE
-
     data = r.json()["next_step"]
     if data["role"] != "hr":
         fail("Workflow did not move to HR")
 
     ok("Manager approval successful → HR step created")
-
 
 
 # =========================
@@ -152,7 +150,7 @@ def test_hr_approve(leave_id):
 
 
 # =========================
-# ✅ 7️⃣ VERIFY LEAVE STATUS = APPROVED
+# ✅ 7️⃣ VERIFY FINAL STATUS
 # =========================
 def test_leave_final_status(leave_id):
     print("\n--- Verifying Final Leave Status ---")
@@ -172,7 +170,7 @@ def test_leave_final_status(leave_id):
 
 
 # =========================
-# ✅ 8️⃣ TEST REJECT FLOW
+# ✅ 8️⃣ TEST REJECT FLOW (SAFE DATES ✅)
 # =========================
 def test_reject_flow():
     print("\n--- Testing Reject Flow ---")
@@ -180,8 +178,8 @@ def test_reject_flow():
     payload = {
         "employee_id": EMPLOYEE_ID,
         "leave_type_id": LEAVE_TYPE_ID,
-        "start_date": "2025-12-10",
-        "end_date": "2025-12-11",
+        "start_date": "2025-12-25",
+        "end_date": "2025-12-26",
         "total_days": 2,
         "reason": "Personal"
     }
@@ -193,7 +191,6 @@ def test_reject_flow():
     leave_id = r.json()["data"]["leave_id"]
     ok(f"Reject Test Leave Applied (leave_id={leave_id})")
 
-    # Reject immediately
     payload = {"remarks": "Rejected for testing"}
     r = requests.post(f"{BASE_URL}/workflow/leave/{leave_id}/reject", json=payload)
 
@@ -211,7 +208,7 @@ def test_reject_flow():
 
 
 # =========================
-# ✅ MAIN TEST RUNNER
+# ✅ MAIN RUNNER
 # =========================
 if __name__ == "__main__":
     print("\n==============================")
