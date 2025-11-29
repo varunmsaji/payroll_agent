@@ -1,346 +1,250 @@
-# app/database/attendance_db.py
-
+import psycopg2
 from psycopg2.extras import RealDictCursor
-from datetime import datetime, date
-from math import floor
-from decimal import Decimal
+from datetime import date, datetime
+import json
 
-from .connection import get_connection
-from .employee_shift_db import EmployeeShiftDB
+# ==========================================
+# DATABASE CONNECTION
+# ==========================================
+DB_PARAMS = {
+    "dbname": "hrms_db",
+    "user": "varun",
+    "password": "varun@123",
+    "host": "localhost",
+    "port": 5432,
+}
+
+def get_connection():
+    return psycopg2.connect(**DB_PARAMS)
 
 
-# ============================================================
-# POLICY FLAGS
-# ============================================================
-
-# If True: if employee did NOT record any break events, we assume they took the
-# allowed break and deduct it. If False: only recorded break is counted.
-AUTO_GRANT_BREAK_IF_NO_PUNCH = False
-
-
-# ============================================================
-# RAW ATTENDANCE EVENTS
-# ============================================================
+# ==========================================
+# ATTENDANCE EVENT FUNCTIONS (RAW LOGS)
+# ==========================================
 class AttendanceEventDB:
 
-    VALID_EVENT_TYPES = {"check_in", "check_out", "break_start", "break_end"}
-
+    
+    
     @staticmethod
-    def add_event(employee_id, event_type, source="manual", meta=None):
-        """
-        Hardened:
-        - Validates event_type
-        - Prevents double check-in
-        - Prevents check-out without prior check-in
-        - Prevents multiple check-outs
-        - Prevents break_start if previous break not ended
-        - Prevents break_end if no open break
-        Returns:
-            - dict(row) on success
-            - {"error": "..."} on validation failure
-        """
-        if event_type not in AttendanceEventDB.VALID_EVENT_TYPES:
-            return {"error": f"Invalid event_type: {event_type}"}
-
-        today = datetime.now().date()
-        events_today = AttendanceEventDB.get_events_for_day(employee_id, today)
-
-        # Helper flags
-        has_check_in = any(e["event_type"] == "check_in" for e in events_today)
-        has_check_out = any(e["event_type"] == "check_out" for e in events_today)
-
-        # Determine if there is an "open" break
-        open_break = False
-        for e in events_today:
-            if e["event_type"] == "break_start" and not open_break:
-                open_break = True
-            elif e["event_type"] == "break_end" and open_break:
-                open_break = False
-
-        # ============================
-        # VALIDATION RULES
-        # ============================
-
-        # 1️⃣ CHECK-IN
-        if event_type == "check_in":
-            if has_check_in:
-                return {"error": "Check-in already recorded for today"}
-
-        # 2️⃣ CHECK-OUT
-        elif event_type == "check_out":
-            if not has_check_in:
-                return {"error": "Cannot check-out without a check-in today"}
-            if has_check_out:
-                return {"error": "Check-out already recorded for today"}
-
-        # 3️⃣ BREAK START
-        elif event_type == "break_start":
-            if not has_check_in:
-                return {"error": "Cannot start break before check-in"}
-            if open_break:
-                return {"error": "Previous break not ended; cannot start another break"}
-
-        # 4️⃣ BREAK END
-        elif event_type == "break_end":
-            if not has_check_in:
-                return {"error": "Cannot end break before check-in"}
-            if not open_break:
-                return {"error": "No active break to end"}
-
-        # ============================
-        # IF VALID → INSERT EVENT
-        # ============================
+    def add_event(employee_id: int, event_type: str, source="manual", meta=None):
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
+        meta_json = json.dumps(meta) if meta is not None else None
+
         cur.execute("""
-            INSERT INTO attendance_events
-            (employee_id, event_type, event_time, source, meta)
-            VALUES (%s,%s,NOW(),%s,%s)
+            INSERT INTO attendance_events (employee_id, event_type, event_time, source, meta)
+            VALUES (%s, %s, NOW(), %s, %s)
             RETURNING *;
-        """, (employee_id, event_type, source, meta))
+        """, (employee_id, event_type, source, meta_json))
 
-        res = cur.fetchone()
+        row = cur.fetchone()
         conn.commit()
+        cur.close()
         conn.close()
-        return res
+        return row
 
     @staticmethod
-    def get_events_for_day(employee_id, target_date):
+    def get_events_for_window(employee_id: int, start_dt: datetime, end_dt: datetime):
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
+
         cur.execute("""
             SELECT *
             FROM attendance_events
-            WHERE employee_id=%s AND DATE(event_time)=%s
+            WHERE employee_id = %s
+              AND event_time BETWEEN %s AND %s
             ORDER BY event_time ASC;
-        """, (employee_id, target_date))
-        res = cur.fetchall()
+        """, (employee_id, start_dt, end_dt))
+
+        rows = cur.fetchall()
+        cur.close()
         conn.close()
-        return res
-
-    @staticmethod
-    def get_all_events_for_employee(employee_id):
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT *
-            FROM attendance_events
-            WHERE employee_id=%s
-            ORDER BY event_time DESC;
-        """, (employee_id,))
-        res = cur.fetchall()
-        conn.close()
-        return res
+        return rows
 
 
-# ============================================================
-# PROCESSED ATTENDANCE (late, OT, break, net hours)
-# ============================================================
+# ==========================================
+# FULL PAYROLL-GRADE ATTENDANCE DB
+# ==========================================
 class AttendanceDB:
 
-    # ----------------------------------------
-    # MAIN PROCESSOR
-    # ----------------------------------------
     @staticmethod
-    def process_attendance(employee_id, day: date):
-        """
-        Processes one day's attendance for an employee.
-
-        Hardened:
-        - Does nothing if no events for that day
-        - Respects attendance.is_locked (no overwrite)
-        - Returns {"error": "..."} if locked
-        """
-        events = AttendanceEventDB.get_events_for_day(employee_id, day)
-        if not events:
-            return {"error": "No attendance events for the given date"}
-
-        check_in = None
-        check_out = None
-        break_start = None
-        actual_break_minutes = 0
-
-        # ========= Parse events =========
-        for ev in events:
-            if ev["event_type"] == "check_in" and not check_in:
-                check_in = ev["event_time"]
-
-            elif ev["event_type"] == "check_out":
-                check_out = ev["event_time"]
-
-            elif ev["event_type"] == "break_start":
-                break_start = ev["event_time"]
-
-            elif ev["event_type"] == "break_end" and break_start:
-                diff = (ev["event_time"] - break_start).total_seconds() / 60
-                actual_break_minutes += floor(diff)
-                break_start = None
-
-        # Fallback: if no explicit check_out, use last event time
-        if not check_out:
-            check_out = events[-1]["event_time"]
-
-        # ========= SHIFT DETAILS =========
-        shift = EmployeeShiftDB.get_current_shift(employee_id)
-        shift_id = shift["shift_id"] if shift else None
-        allowed_break_minutes = 0
-        if shift:
-            allowed_break_minutes = shift.get("break_minutes") or 0
-
-        # ========= Auto-grant break policy =========
-        if actual_break_minutes == 0 and AUTO_GRANT_BREAK_IF_NO_PUNCH and allowed_break_minutes:
-            actual_break_minutes = allowed_break_minutes
-
-        # ========= HOURS CALC =========
-        total_hours = round((check_out - check_in).total_seconds() / 3600, 2)
-
-        late_minutes = overtime_minutes = 0
-        shift_start = shift_end = None
-
-        if shift:
-            shift_start = datetime.combine(day, shift["start_time"])
-            shift_end = datetime.combine(day, shift["end_time"])
-
-        if shift_start:
-            late_minutes = max(0, floor((check_in - shift_start).total_seconds() / 60))
-        if shift_end:
-            overtime_minutes = max(0, floor((check_out - shift_end).total_seconds() / 60))
-
-        # ========= Hybrid break logic =========
-        # Only deduct EXCESS over allowed
-        excess_break_minutes = max(0, actual_break_minutes - (allowed_break_minutes or 0))
-
-        net_hours = total_hours
-        net_hours -= (excess_break_minutes / 60.0)
-        net_hours -= (late_minutes / 60.0)
-        net_hours += (overtime_minutes / 60.0)
-        net_hours = round(net_hours, 2)
-
-        # ========= INSERT / UPDATE ATTENDANCE =========
+    def get_by_employee_and_date(employee_id: int, dt: date):
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        cur.execute("""
-           INSERT INTO attendance 
-           (employee_id, date, check_in, check_out, total_hours,
-            late_minutes, overtime_minutes, break_minutes, net_hours, shift_id, is_locked)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,FALSE)
-           ON CONFLICT (employee_id, date) DO UPDATE SET
-               check_in = EXCLUDED.check_in,
-               check_out = EXCLUDED.check_out,
-               total_hours = EXCLUDED.total_hours,
-               late_minutes = EXCLUDED.late_minutes,
-               overtime_minutes = EXCLUDED.overtime_minutes,
-               break_minutes = EXCLUDED.break_minutes,
-               net_hours = EXCLUDED.net_hours,
-               shift_id = EXCLUDED.shift_id
-           WHERE attendance.is_locked = FALSE
-           RETURNING *;
-        """, (
-            employee_id, day, check_in, check_out, total_hours,
-            late_minutes, overtime_minutes, actual_break_minutes, net_hours, shift_id
-        ))
-
-        res = cur.fetchone()
-        conn.commit()
-        conn.close()
-
-        # If locked, RETURNING will be empty → res is None
-        if not res:
-            return {"error": "Attendance is locked for this date and cannot be modified"}
-
-        # Add policy info to response (not stored in DB)
-        res = dict(res)
-        res["_policy"] = {
-            "allowed_break_minutes": allowed_break_minutes,
-            "actual_break_minutes": actual_break_minutes,
-            "excess_break_minutes": excess_break_minutes,
-            "auto_grant_break_if_no_punch": AUTO_GRANT_BREAK_IF_NO_PUNCH
-        }
-
-        return res
-
-    # ----------------------------------------
-    # GET ALL ATTENDANCE FOR EMPLOYEE
-    # ----------------------------------------
-    @staticmethod
-    def get_attendance(employee_id):
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
             SELECT *
             FROM attendance
-            WHERE employee_id=%s
-            ORDER BY date DESC;
-        """, (employee_id,))
-        rows = cur.fetchall()
+            WHERE employee_id = %s AND date = %s;
+        """, (employee_id, dt))
+
+        row = cur.fetchone()
+        cur.close()
         conn.close()
+        return row
 
-        converted = []
-        for r in rows:
-            row = dict(r)
-
-            # Convert Decimal → float
-            for key in ("total_hours", "net_hours"):
-                if key in row and isinstance(row[key], Decimal):
-                    row[key] = float(row[key])
-
-            # Convert numeric minutes to int
-            for key in ("late_minutes", "overtime_minutes", "break_minutes"):
-                try:
-                    row[key] = int(row[key])
-                except Exception:
-                    pass
-
-            converted.append(row)
-
-        return converted
-
-    # ----------------------------------------
-    # LOCK / UNLOCK ATTENDANCE (FOR PAYROLL)
-    # ----------------------------------------
-    @staticmethod
-    def lock_month(month: int, year: int, employee_id: int = None):
-        """
-        Mark attendance rows as locked for given month/year.
-        Once locked, process_attendance cannot overwrite them.
-        """
-        conn = get_connection()
-        cur = conn.cursor()
-
-        if employee_id:
-            cur.execute("""
-                UPDATE attendance
-                SET is_locked = TRUE
-                WHERE EXTRACT(MONTH FROM date)=%s
-                  AND EXTRACT(YEAR FROM date)=%s
-                  AND employee_id=%s;
-            """, (month, year, employee_id))
-        else:
-            cur.execute("""
-                UPDATE attendance
-                SET is_locked = TRUE
-                WHERE EXTRACT(MONTH FROM date)=%s
-                  AND EXTRACT(YEAR FROM date)=%s;
-            """, (month, year))
-
-        conn.commit()
-        conn.close()
-        return {"locked": True}
 
     @staticmethod
-    def unlock_day(employee_id: int, day: date):
+    def upsert_full_attendance(data: dict):
         """
-        Admin-only: unlock a specific day's attendance to allow correction.
+        This method stores ALL payroll-required columns.
+        It also RESPECTS the payroll lock.
         """
         conn = get_connection()
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
         cur.execute("""
-            UPDATE attendance
-            SET is_locked = FALSE
-            WHERE employee_id=%s AND date=%s;
-        """, (employee_id, day))
+            INSERT INTO attendance (
+                employee_id,
+                shift_id,
+                date,
+                check_in,
+                check_out,
+                total_hours,
+                net_hours,
+                break_minutes,
+                overtime_minutes,
+                late_minutes,
+                early_exit_minutes,
+                is_late,
+                is_early_checkout,
+                is_overtime,
+                is_weekend,
+                is_holiday,
+                is_night_shift,
+                status,
+                is_payroll_locked,
+                locked_at
+            )
+            VALUES (
+                %(employee_id)s,
+                %(shift_id)s,
+                %(date)s,
+                %(check_in)s,
+                %(check_out)s,
+                %(total_hours)s,
+                %(net_hours)s,
+                %(break_minutes)s,
+                %(overtime_minutes)s,
+                %(late_minutes)s,
+                %(early_exit_minutes)s,
+                %(is_late)s,
+                %(is_early_checkout)s,
+                %(is_overtime)s,
+                %(is_weekend)s,
+                %(is_holiday)s,
+                %(is_night_shift)s,
+                %(status)s,
+                %(is_payroll_locked)s,
+                %(locked_at)s
+            )
+            ON CONFLICT (employee_id, date)
+            DO UPDATE SET
+                shift_id           = EXCLUDED.shift_id,
+                check_in           = EXCLUDED.check_in,
+                check_out          = EXCLUDED.check_out,
+                total_hours        = EXCLUDED.total_hours,
+                net_hours          = EXCLUDED.net_hours,
+                break_minutes      = EXCLUDED.break_minutes,
+                overtime_minutes   = EXCLUDED.overtime_minutes,
+                late_minutes       = EXCLUDED.late_minutes,
+                early_exit_minutes = EXCLUDED.early_exit_minutes,
+                is_late            = EXCLUDED.is_late,
+                is_early_checkout  = EXCLUDED.is_early_checkout,
+                is_overtime        = EXCLUDED.is_overtime,
+                is_weekend         = EXCLUDED.is_weekend,
+                is_holiday         = EXCLUDED.is_holiday,
+                is_night_shift     = EXCLUDED.is_night_shift,
+                status             = EXCLUDED.status
+            WHERE attendance.is_payroll_locked = FALSE
+            RETURNING *;
+        """, data)
+
+        row = cur.fetchone()
         conn.commit()
+        cur.close()
         conn.close()
-        return {"unlocked": True}
+        return row
+    
+    @staticmethod
+    def get_attendance_range(employee_id, start_date, end_date):
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            SELECT *
+            FROM attendance
+            WHERE employee_id = %s
+              AND date BETWEEN %s AND %s
+            ORDER BY date;
+        """, (employee_id, start_date, end_date))
+
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return rows
+
+
+
+# ==========================================
+# HOLIDAY FUNCTIONS
+# ==========================================
+class HolidayDB:
+
+    @staticmethod
+    def add_holiday(dt: date, name: str, is_optional=False):
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            INSERT INTO holidays (holiday_date, name, is_optional)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (holiday_date) DO NOTHING
+            RETURNING *;
+        """, (dt, name, is_optional))
+
+        row = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        return row
+
+    @staticmethod
+    def is_holiday(dt: date):
+        conn = get_connection()
+        cur = conn.cursor()
+
+        cur.execute("SELECT 1 FROM holidays WHERE holiday_date = %s;", (dt,))
+        result = cur.fetchone()
+
+        cur.close()
+        conn.close()
+        return bool(result)
+
+
+# ==========================================
+# SHIFT LOOKUP
+# ==========================================
+class ShiftDB:
+
+    @staticmethod
+    def get_employee_shift(employee_id: int, dt: date):
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            SELECT s.*
+            FROM employee_shifts es
+            JOIN shifts s ON s.shift_id = es.shift_id
+            WHERE es.employee_id = %s
+              AND es.effective_from <= %s
+              AND (es.effective_to IS NULL OR es.effective_to >= %s)
+            ORDER BY es.effective_from DESC
+            LIMIT 1;
+        """, (employee_id, dt, dt))
+
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        return row
