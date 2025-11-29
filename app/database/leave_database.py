@@ -298,14 +298,17 @@ class LeaveRequestDB:
     @staticmethod
     def approve_leave_transaction(leave_id, manager_id):
         """
-        Approve leave + update balance + add history in ONE transaction.
-        Raises Exception on failure (insufficient balance, missing record, etc).
+        ✅ Approves leave
+        ✅ Deducts leave balance (only if paid)
+        ✅ Inserts into leave history
+        ✅ Fully transactional (commit/rollback safe)
+        ✅ RealDictCursor compatible
         """
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
         try:
-            # 1. Fetch leave and lock it FOR UPDATE
+            # 1️⃣ Fetch leave and lock it FOR UPDATE
             cur.execute("""
                 SELECT *
                 FROM leave_requests
@@ -320,7 +323,7 @@ class LeaveRequestDB:
             if leave["status"] != "pending":
                 raise Exception(f"Leave is already {leave['status']}")
 
-            # 2. Approve request
+            # 2️⃣ Approve leave request
             cur.execute("""
                 UPDATE leave_requests
                 SET status='approved',
@@ -329,26 +332,33 @@ class LeaveRequestDB:
                 WHERE leave_id=%s
                 RETURNING *;
             """, (manager_id, leave_id))
+
             leave = cur.fetchone()
 
             year = leave["start_date"].year
 
-            # 3. Deduct balance (only if leave type is paid)
+            # 3️⃣ ✅ Check if leave type is PAID (FIXED)
             cur.execute("""
-                SELECT is_paid FROM leave_types WHERE leave_type_id=%s;
+                SELECT is_paid 
+                FROM leave_types 
+                WHERE leave_type_id=%s;
             """, (leave["leave_type_id"],))
-            lt = cur.fetchone()
-            is_paid = lt[0] if lt else True
 
+            lt = cur.fetchone()
+
+            # ✅ FIX: Safe RealDictCursor access
+            is_paid = lt["is_paid"] if lt and "is_paid" in lt else True
+
+            # 4️⃣ ✅ Deduct balance ONLY if PAID
             if is_paid:
                 cur.execute("""
                     UPDATE employee_leave_balance
                     SET used = used + %s,
                         remaining = remaining - %s
                     WHERE employee_id=%s
-                      AND leave_type_id=%s
-                      AND year=%s
-                      AND remaining >= %s
+                    AND leave_type_id=%s
+                    AND year=%s
+                    AND remaining >= %s
                     RETURNING *;
                 """, (
                     leave["total_days"],
@@ -358,11 +368,12 @@ class LeaveRequestDB:
                     year,
                     leave["total_days"]
                 ))
+
                 balance = cur.fetchone()
                 if not balance:
                     raise Exception("Insufficient leave balance or leave not assigned")
 
-            # 4. Insert into history
+            # 5️⃣ ✅ Insert into leave history
             cur.execute("""
                 INSERT INTO leave_history
                 (employee_id, leave_type_id, start_date, end_date, total_days)
@@ -378,8 +389,13 @@ class LeaveRequestDB:
 
             history = cur.fetchone()
 
+            # ✅ COMMIT ALL CHANGES
             conn.commit()
-            return {"leave": leave, "history": history}
+
+            return {
+                "leave": leave,
+                "history": history
+            }
 
         except Exception as e:
             conn.rollback()
@@ -387,6 +403,7 @@ class LeaveRequestDB:
 
         finally:
             conn.close()
+
 
     @staticmethod
     def reject_leave(leave_id, manager_id):
@@ -446,6 +463,45 @@ class LeaveRequestDB:
         rows = cur.fetchall()
         conn.close()
         return rows
+    
+
+    @staticmethod
+    def update_leave_status_only(leave_id, status):
+        """
+        ✅ Used by Workflow Engine on FINAL approval/rejection
+        """
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            UPDATE leave_requests
+            SET status=%s,
+                approved_on=NOW()
+            WHERE leave_id=%s
+            RETURNING *;
+        """, (status, leave_id))
+
+        row = cur.fetchone()
+        conn.commit()
+        conn.close()
+        return row
+
+
+    @staticmethod
+    def get_employee_id_from_leave(leave_id):
+        conn = get_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT employee_id
+            FROM leave_requests
+            WHERE leave_id=%s;
+        """, (leave_id,))
+
+        row = cur.fetchone()
+        conn.close()
+        return row[0] if row else None
+
 
 
 # ===============================================
