@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.shifts import router as shifts_router
 from app.api.leave_api import router as leave_router
 from app.api.attendence import router as attendence_router
+from app.api.payroll import router as payroll_router
 
 app = FastAPI()
 app.add_middleware(
@@ -22,3 +23,4 @@ app.include_router(shifts_router)
 # app.include_router(attendence_dashboard_router)
 app.include_router(leave_router)
 app.include_router(attendence_router)
+app.include_router(payroll_router, prefix="/payroll", tags=["Payroll"])

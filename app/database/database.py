@@ -75,14 +75,26 @@ def create_tables():
     """)
 
     # --------------------------
-    # RAW ATTENDANCE EVENTS (Recommended)
+    # HOLIDAYS (NEW)
+    # --------------------------
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS holidays (
+        id SERIAL PRIMARY KEY,
+        holiday_date DATE UNIQUE NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        is_optional BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    """)
+
+    # --------------------------
+    # RAW ATTENDANCE EVENTS
     # --------------------------
     cur.execute("""
     CREATE TABLE IF NOT EXISTS attendance_events (
         event_id SERIAL PRIMARY KEY,
         employee_id INT REFERENCES employees(employee_id) ON DELETE CASCADE,
         event_type VARCHAR(20) NOT NULL, 
-            -- Allowed: check_in, check_out, break_start, break_end
         event_time TIMESTAMP NOT NULL,
         source VARCHAR(40) DEFAULT 'manual',
         meta JSONB,
@@ -91,17 +103,31 @@ def create_tables():
     """)
 
     # --------------------------
-    # PROCESSED DAILY ATTENDANCE
+    # PROCESSED DAILY ATTENDANCE (UPDATED)
     # --------------------------
     cur.execute("""
     CREATE TABLE IF NOT EXISTS attendance (
         attendance_id SERIAL PRIMARY KEY,
         employee_id INT REFERENCES employees(employee_id) ON DELETE CASCADE,
+        shift_id INT REFERENCES shifts(shift_id) ON DELETE SET NULL,
         date DATE NOT NULL,
         check_in TIMESTAMP,
         check_out TIMESTAMP,
         total_hours NUMERIC(5,2),
+        net_hours NUMERIC(5,2),
+        break_minutes INT DEFAULT 0,
+        overtime_minutes INT DEFAULT 0,
+        late_minutes INT DEFAULT 0,
+        early_exit_minutes INT DEFAULT 0,
+        is_late BOOLEAN DEFAULT FALSE,
+        is_early_checkout BOOLEAN DEFAULT FALSE,
+        is_overtime BOOLEAN DEFAULT FALSE,
+        is_weekend BOOLEAN DEFAULT FALSE,
+        is_holiday BOOLEAN DEFAULT FALSE,
+        is_night_shift BOOLEAN DEFAULT FALSE,
         status VARCHAR(20) DEFAULT 'present',
+        is_payroll_locked BOOLEAN DEFAULT FALSE,
+        locked_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(employee_id, date)
     );
@@ -125,7 +151,7 @@ def create_tables():
     """)
 
     # --------------------------
-    # PAYROLL
+    # PAYROLL (UPDATED)
     # --------------------------
     cur.execute("""
     CREATE TABLE IF NOT EXISTS payroll (
@@ -136,8 +162,27 @@ def create_tables():
         working_days INT,
         present_days INT,
         total_hours NUMERIC(10,2),
+        
+        -- Salary Components
         gross_salary NUMERIC(10,2),
         net_salary NUMERIC(10,2),
+        basic_pay NUMERIC(10,2),
+        hra_pay NUMERIC(10,2),
+        allowances_pay NUMERIC(10,2),
+        
+        -- Overtime & Penalties
+        overtime_hours NUMERIC(5,2) DEFAULT 0,
+        overtime_pay NUMERIC(10,2) DEFAULT 0,
+        late_penalty NUMERIC(10,2) DEFAULT 0,
+        early_penalty NUMERIC(10,2) DEFAULT 0,
+        lop_days NUMERIC(5,2) DEFAULT 0,
+        lop_deduction NUMERIC(10,2) DEFAULT 0,
+        
+        -- Additional
+        night_shift_allowance NUMERIC(10,2) DEFAULT 0,
+        holiday_pay NUMERIC(10,2) DEFAULT 0,
+        
+        is_finalized BOOLEAN DEFAULT FALSE,
         generated_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(employee_id, month, year)
     );
