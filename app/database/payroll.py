@@ -1,76 +1,169 @@
 # app/database/payroll_db.py
 
+from datetime import date
 from psycopg2.extras import RealDictCursor
-from .connection import get_connection
+from app.database.connection import get_connection
 
+
+# ============================================================
+# ✅ PAYROLL DATABASE (SALARY OUTPUT)
+# ============================================================
 
 class PayrollDB:
 
     @staticmethod
-    def generate(employee_id, month, year):
+    def upsert_payroll(
+        employee_id: int,
+        year: int,
+        month: int,
+        working_days: int,
+        paid_days: int,
+        total_hours: float,
+        gross_salary: float,
+        net_salary: float,
+    ):
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Total net hours
         cur.execute("""
-            SELECT SUM(net_hours) AS hrs, COUNT(*) AS present_days
-            FROM attendance
-            WHERE employee_id=%s
-              AND EXTRACT(MONTH FROM date)=%s
-              AND EXTRACT(YEAR FROM date)=%s;
-        """, (employee_id, month, year))
-
-        result = cur.fetchone()
-        net_hours = result["hrs"] or 0
-        present_days = result["present_days"]
-
-        # Get salary structure
-        cur.execute("""
-            SELECT *
-            FROM salary_structure
-            WHERE employee_id=%s
-            ORDER BY effective_from DESC LIMIT 1;
-        """, (employee_id,))
-        sal = cur.fetchone()
-
-        if not sal:
-            gross_salary = net_salary = 0
-        else:
-            gross_salary = sal["basic"] + sal["hra"] + sal["allowances"]
-            net_salary = gross_salary - sal["deductions"]
-
-        # Insert/update payroll
-        cur.execute("""
-            INSERT INTO payroll
-            (employee_id, month, year, working_days, present_days, total_hours,
-             gross_salary, net_salary)
+            INSERT INTO payroll (
+                employee_id,
+                month,
+                year,
+                working_days,
+                present_days,
+                total_hours,
+                gross_salary,
+                net_salary
+            )
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (employee_id, month, year) DO UPDATE SET
-                present_days=EXCLUDED.present_days,
-                total_hours=EXCLUDED.total_hours,
-                gross_salary=EXCLUDED.gross_salary,
-                net_salary=EXCLUDED.net_salary
+            ON CONFLICT (employee_id, month, year)
+            DO UPDATE SET
+                working_days = EXCLUDED.working_days,
+                present_days = EXCLUDED.present_days,
+                total_hours = EXCLUDED.total_hours,
+                gross_salary = EXCLUDED.gross_salary,
+                net_salary = EXCLUDED.net_salary,
+                generated_at = NOW()
             RETURNING *;
         """, (
-            employee_id, month, year,
-            26, present_days, net_hours,
-            gross_salary, net_salary
+            employee_id,
+            month,
+            year,
+            working_days,
+            paid_days,
+            total_hours,
+            gross_salary,
+            net_salary
         ))
 
-        res = cur.fetchone()
+        row = cur.fetchone()
         conn.commit()
+        cur.close()
         conn.close()
-        return res
+        return row
 
     @staticmethod
-    def get_payroll(employee_id, month, year):
+    def get_payroll(employee_id: int, month: int, year: int):
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
+
         cur.execute("""
             SELECT *
             FROM payroll
-            WHERE employee_id=%s AND month=%s AND year=%s;
+            WHERE employee_id = %s
+              AND month = %s
+              AND year = %s;
         """, (employee_id, month, year))
-        res = cur.fetchone()
+
+        row = cur.fetchone()
+        cur.close()
         conn.close()
-        return res
+        return row
+
+    @staticmethod
+    def lock_attendance_for_period(employee_id: int, start_date: date, end_date: date):
+        conn = get_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            UPDATE attendance
+            SET
+                is_payroll_locked = TRUE,
+                locked_at = NOW()
+            WHERE employee_id = %s
+              AND date BETWEEN %s AND %s;
+        """, (employee_id, start_date, end_date))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True
+
+
+# ============================================================
+# ✅ PAYROLL POLICY DATABASE (ADMIN CONTROL)
+# ============================================================
+
+class PayrollPolicyDB:
+
+    @staticmethod
+    def get_active_policy():
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            SELECT *
+            FROM payroll_policies
+            WHERE active = TRUE
+            ORDER BY created_at DESC
+            LIMIT 1;
+        """)
+
+        policy = cur.fetchone()
+        cur.close()
+        conn.close()
+        return policy
+
+    @staticmethod
+    def update_policy(data: dict):
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Deactivate previous policies
+        cur.execute("UPDATE payroll_policies SET active = FALSE;")
+
+        # Insert new active policy
+        cur.execute("""
+            INSERT INTO payroll_policies (
+                late_grace_minutes,
+                late_lop_threshold_minutes,
+                early_exit_grace_minutes,
+                early_exit_lop_threshold_minutes,
+                overtime_enabled,
+                overtime_multiplier,
+                holiday_double_pay,
+                weekend_paid_only_if_worked,
+                night_shift_allowance,
+                active
+            )
+            VALUES (
+                %(late_grace_minutes)s,
+                %(late_lop_threshold_minutes)s,
+                %(early_exit_grace_minutes)s,
+                %(early_exit_lop_threshold_minutes)s,
+                %(overtime_enabled)s,
+                %(overtime_multiplier)s,
+                %(holiday_double_pay)s,
+                %(weekend_paid_only_if_worked)s,
+                %(night_shift_allowance)s,
+                TRUE
+            )
+            RETURNING *;
+        """, data)
+
+        policy = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        return policy
