@@ -1,14 +1,24 @@
 from fastapi import APIRouter
 from datetime import date
-from app.database.database import get_connection   # your DB connector
+from app.database.connection import get_connection
 
-router = APIRouter(prefix="/admin", tags=["Admin Dashboard"])
+router = APIRouter(prefix="/hrms/admin/dashboard", tags=["Admin Dashboard"])
 
 
 # ------------------------------------------------------------
-# Helper function
+# ✅ Helper
 # ------------------------------------------------------------
-def fetch(sql, params=None):
+def fetch_one(sql, params=None):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(sql, params or ())
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row
+
+
+def fetch_all(sql, params=None):
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(sql, params or ())
@@ -19,145 +29,108 @@ def fetch(sql, params=None):
 
 
 # ------------------------------------------------------------
-# 1️⃣ Total Employees & Active Employees
+# ✅ ✅ ✅ SINGLE DASHBOARD API (FRONTEND LOADS THIS ONLY)
 # ------------------------------------------------------------
-@router.get("/employees-summary")
-def employees_summary():
-    sql = """
-        SELECT 
-            (SELECT COUNT(*) FROM employees) AS total_employees,
-            (SELECT COUNT(*) FROM employees WHERE status='active') AS active_employees
-    """
-    return fetch(sql)[0]
-
-
-# ------------------------------------------------------------
-# 2️⃣ Today's Attendance Summary (Present, Absent)
-# ------------------------------------------------------------
-@router.get("/attendance-today")
-def attendance_today():
+@router.get("/overview")
+def dashboard_overview():
     today = date.today()
 
-    sql = """
-        SELECT
-            (SELECT COUNT(*) FROM attendance WHERE date=%s) AS present,
-            (SELECT COUNT(*) FROM employees) 
-                - (SELECT COUNT(*) FROM attendance WHERE date=%s) AS absent
-    """
-    return fetch(sql, (today, today))[0]
-
-
-# ------------------------------------------------------------
-# 3️⃣ Late vs On-time vs Absent
-# ------------------------------------------------------------
-@router.get("/late-on-time-absent")
-def late_ontime_absent():
-    today = date.today()
-
-    sql = """
-        SELECT
-            COUNT(*) FILTER (WHERE a.check_in::time > s.start_time) AS late,
-            COUNT(*) FILTER (WHERE a.check_in::time <= s.start_time) AS on_time,
-            (
-                SELECT COUNT(*) FROM employees 
-                WHERE employee_id NOT IN (SELECT employee_id FROM attendance WHERE date=%s)
-            ) AS absent
-        FROM attendance a
-        JOIN employee_shifts es ON es.employee_id = a.employee_id
-        JOIN shifts s ON s.shift_id = es.shift_id
-        WHERE a.date=%s
-    """
-    return fetch(sql, (today, today))[0]
-
-
-# ------------------------------------------------------------
-# 4️⃣ Overtime totals (Total overtime hours today)
-# ------------------------------------------------------------
-@router.get("/overtime-today")
-def overtime_today():
-    today = date.today()
-
-    sql = """
+    # --------------------------------------------------------
+    # ✅ EMPLOYEE COUNTS
+    # --------------------------------------------------------
+    emp_sql = """
         SELECT 
-            SUM(
-                a.total_hours - (EXTRACT(EPOCH FROM (s.end_time - s.start_time)) / 3600)
-            ) AS total_overtime_hours
-        FROM attendance a
-        JOIN employee_shifts es ON es.employee_id = a.employee_id
-        JOIN shifts s ON s.shift_id = es.shift_id
-        WHERE a.date=%s
-          AND a.total_hours > (EXTRACT(EPOCH FROM (s.end_time - s.start_time)) / 3600)
+            COUNT(*) AS total,
+            COUNT(*) FILTER (WHERE status = 'active') AS active
+        FROM employees;
     """
-    row = fetch(sql, (today,))[0]
-    return row
+    emp = fetch_one(emp_sql)
 
-
-# ------------------------------------------------------------
-# 5️⃣ Monthly Payroll Summary
-# ------------------------------------------------------------
-@router.get("/payroll-summary/{month}/{year}")
-def payroll_summary(month: int, year: int):
-    sql = """
+    # --------------------------------------------------------
+    # ✅ TODAY ATTENDANCE SUMMARY (CORRECT)
+    # --------------------------------------------------------
+    attendance_sql = """
         SELECT
-            SUM(gross_salary) AS total_gross,
-            SUM(net_salary) AS total_net,
-            COUNT(*) AS employees_paid,
-            AVG(net_salary) AS avg_salary
-        FROM payroll
-        WHERE month=%s AND year=%s
-    """
-    return fetch(sql, (month, year))[0]
-
-
-# ------------------------------------------------------------
-# 6️⃣ Monthly Working Hours Summary
-# ------------------------------------------------------------
-@router.get("/monthly-hours/{month}/{year}")
-def monthly_hours(month: int, year: int):
-    sql = """
-        SELECT 
-            employee_id,
-            SUM(total_hours) AS monthly_hours
+            COUNT(*) FILTER (WHERE status = 'present') AS present,
+            COUNT(*) FILTER (WHERE status = 'absent') AS absent,
+            COUNT(*) FILTER (WHERE is_late = TRUE) AS late
         FROM attendance
-        WHERE EXTRACT(MONTH FROM date)=%s
-          AND EXTRACT(YEAR FROM date)=%s
-        GROUP BY employee_id
-        ORDER BY monthly_hours DESC
+        WHERE date = %s;
     """
-    return fetch(sql, (month, year))
+    att = fetch_one(attendance_sql, (today,))
 
-
-# ------------------------------------------------------------
-# 7️⃣ Recent Attendance Events (last 50)
-# ------------------------------------------------------------
-@router.get("/recent-events")
-def recent_events():
-    sql = """
+    # --------------------------------------------------------
+    # ✅ TOTAL OVERTIME (FROM STORED overtime_minutes)
+    # --------------------------------------------------------
+    overtime_sql = """
         SELECT 
-            e.first_name || ' ' || e.last_name AS employee,
-            a.event_type,
-            a.event_time,
-            a.source
-        FROM attendance_events a
-        JOIN employees e ON e.employee_id = a.employee_id
-        ORDER BY a.event_time DESC
-        LIMIT 50
+            COALESCE(SUM(overtime_minutes), 0) / 60.0 AS total_overtime_hours
+        FROM attendance
+        WHERE date = %s;
     """
-    return fetch(sql)
+    overtime = fetch_one(overtime_sql, (today,))
 
-
-# ------------------------------------------------------------
-# 8️⃣ Shift-wise employee distribution
-# ------------------------------------------------------------
-@router.get("/shift-distribution")
-def shift_distribution():
-    sql = """
+    # --------------------------------------------------------
+    # ✅ SHIFT DISTRIBUTION
+    # --------------------------------------------------------
+    shift_sql = """
         SELECT 
             s.shift_name,
             COUNT(*) AS employees_assigned
         FROM employee_shifts es
         JOIN shifts s ON s.shift_id = es.shift_id
         GROUP BY s.shift_name
-        ORDER BY employees_assigned DESC
+        ORDER BY employees_assigned DESC;
     """
-    return fetch(sql)
+    shifts = fetch_all(shift_sql)
+
+    # --------------------------------------------------------
+    # ✅ RECENT ATTENDANCE EVENTS (LIVE FEED)
+    # --------------------------------------------------------
+    events_sql = """
+        SELECT 
+            e.employee_id,
+            e.first_name || ' ' || e.last_name AS employee_name,
+            ae.event_type,
+            ae.event_time,
+            ae.source
+        FROM attendance_events ae
+        JOIN employees e ON e.employee_id = ae.employee_id
+        ORDER BY ae.event_time DESC
+        LIMIT 50;
+    """
+    events = fetch_all(events_sql)
+
+    return {
+        "date": today,
+
+        "employees": {
+            "total": emp[0],
+            "active": emp[1]
+        },
+
+        "attendance_today": {
+            "present": att[0] or 0,
+            "absent": att[1] or 0,
+            "late": att[2] or 0
+        },
+
+        "overtime_today_hours": round(overtime[0] or 0, 2),
+
+        "shift_distribution": [
+            {
+                "shift_name": row[0],
+                "employees_assigned": row[1]
+            } for row in shifts
+        ],
+
+        "recent_activity": [
+            {
+                "employee_id": row[0],
+                "employee_name": row[1],
+                "event_type": row[2],
+                "event_time": row[3],
+                "source": row[4]
+            } for row in events
+        ]
+    }
