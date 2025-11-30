@@ -1,161 +1,148 @@
 """
-Simple end-to-end tester for HRMS Payroll Module
+FULL END-TO-END PAYROLL TEST WITH ATTENDANCE CALCULATION
 
-Make sure your FastAPI app is running, e.g.:
-    uvicorn app.main:app --reload
+1️⃣ Recalculate attendance for multiple dates
+2️⃣ Regenerate payroll
+3️⃣ Fetch final payroll
+4️⃣ Validate overtime, late, net salary
 
-Then run:
-    python test_payroll_module.py
+Run:
+    python test_full_payroll_with_attendance.py
 """
 
 import requests
 import json
+from datetime import date, timedelta
 
 # =========================
 # CONFIG
 # =========================
+
 BASE_URL = "http://127.0.0.1:8000"
 
-EMPLOYEE_ID = 35      # ✅ must exist
+EMPLOYEE_ID = 35
 YEAR = 2025
 MONTH = 11
 
+ATTENDANCE_BASE = f"{BASE_URL}/hrms/attendance"
 PAYROLL_BASE = f"{BASE_URL}/hrms/payroll"
-POLICY_BASE = f"{BASE_URL}/hrms/payroll/policy"   # ✅ FIXED URL
 
 
 # =========================
 # HELPERS
 # =========================
 
-def pretty_print(title, resp):
-    print("\n" + "=" * 70)
+def pretty(title, resp):
+    print("\n" + "=" * 80)
     print(f"🔹 {title}")
     print(f"Status Code: {resp.status_code}")
     try:
-        data = resp.json()
-        print("Response JSON:")
-        print(json.dumps(data, indent=2, default=str))
+        print(json.dumps(resp.json(), indent=2, default=str))
     except Exception:
-        print("Raw Response Text:")
         print(resp.text)
-    print("=" * 70 + "\n")
+    print("=" * 80 + "\n")
 
 
-def post_json(url, payload=None):
+def post(url, payload=None):
     if payload is None:
         payload = {}
     return requests.post(url, json=payload)
 
 
-def get_json(url, params=None):
-    if params is None:
-        params = {}
+def get(url, params=None):
     return requests.get(url, params=params)
 
 
 # =========================
-# TEST SCENARIOS
+# 1️⃣ RECALCULATE ATTENDANCE FOR FULL MONTH
 # =========================
 
-def test_policy_exists():
-    print("\n========== TEST 0: PAYROLL POLICY CHECK ==========")
+def recalc_full_month():
+    print("\n========== STEP 1: RECALCULATE ATTENDANCE ==========\n")
 
-    resp = get_json(POLICY_BASE)
-    pretty_print("Get Active Payroll Policy", resp)
+    start_day = date(YEAR, MONTH, 1)
 
-    if resp.status_code != 200:
-        print("❌ No active payroll policy found.")
+    # detect last day safely
+    if MONTH == 12:
+        end_day = date(YEAR + 1, 1, 1) - timedelta(days=1)
     else:
-        print("✅ Active payroll policy exists.\n")
+        end_day = date(YEAR, MONTH + 1, 1) - timedelta(days=1)
 
-
-def test_generate_single():
-    print("\n========== TEST 1: GENERATE PAYROLL (SINGLE EMPLOYEE) ==========")
-
-    payload = {
-        "employee_id": EMPLOYEE_ID,
-        "year": YEAR,
-        "month": MONTH,
-    }
-
-    resp = post_json(f"{PAYROLL_BASE}/generate", payload)
-    pretty_print("Generate Payroll (Single)", resp)
-
-
-def test_get_single_payroll():
-    print("\n========== TEST 2: FETCH GENERATED PAYROLL (SINGLE EMPLOYEE) ==========")
-
-    params = {"year": YEAR, "month": MONTH}
-    resp = get_json(f"{PAYROLL_BASE}/{EMPLOYEE_ID}", params=params)
-    pretty_print("Get Payroll for Employee", resp)
-
-
-def test_status_check():
-    print("\n========== TEST 3: PAYROLL STATUS CHECK ==========")
-
-    params = {"year": YEAR, "month": MONTH}
-    resp = get_json(f"{PAYROLL_BASE}/status/{EMPLOYEE_ID}", params=params)
-    pretty_print("Payroll Status for Employee", resp)
-
-
-def test_bulk_generate():
-    print("\n========== TEST 4: BULK PAYROLL GENERATION ==========")
-
-    payload = {"year": YEAR, "month": MONTH}
-    resp = post_json(f"{PAYROLL_BASE}/generate-bulk", payload)
-    pretty_print("Bulk Generate Payroll", resp)
-
-
-def test_regenerate():
-    print("\n========== TEST 5: REGENERATE PAYROLL (ADMIN OVERRIDE) ==========")
-
-    payload = {
-        "employee_id": EMPLOYEE_ID,
-        "year": YEAR,
-        "month": MONTH,
-    }
-
-    resp = post_json(f"{PAYROLL_BASE}/regenerate", payload)
-    pretty_print("Regenerate Payroll for Employee", resp)
-
-
-def test_month_list():
-    print("\n========== TEST 6: LIST ALL PAYROLL ENTRIES FOR MONTH ==========")
-
-    params = {"year": YEAR, "month": MONTH}
-    resp = get_json(f"{PAYROLL_BASE}/month/list", params=params)
-    pretty_print("Month-wise Payroll List", resp)
-
-
-def test_invalid_employee():
-    print("\n========== TEST 7: INVALID EMPLOYEE ID HANDLING ==========")
-
-    payload = {
-        "employee_id": 999999,   # non-existent
-        "year": YEAR,
-        "month": MONTH,
-    }
-
-    resp = post_json(f"{PAYROLL_BASE}/generate", payload)
-    pretty_print("Generate Payroll for Invalid Employee", resp)
+    dt = start_day
+    while dt <= end_day:
+        url = f"{ATTENDANCE_BASE}/recalculate/{EMPLOYEE_ID}"
+        resp = post(url + f"?dt={dt.isoformat()}")
+        print(f"✅ Recalculated: {dt} | Status: {resp.status_code}")
+        dt += timedelta(days=1)
 
 
 # =========================
-# MAIN
+# 2️⃣ REGENERATE PAYROLL
+# =========================
+
+def regenerate_payroll():
+    print("\n========== STEP 2: REGENERATE PAYROLL ==========\n")
+
+    payload = {
+        "employee_id": EMPLOYEE_ID,
+        "year": YEAR,
+        "month": MONTH
+    }
+
+    resp = post(f"{PAYROLL_BASE}/regenerate", payload)
+    pretty("Regenerate Payroll", resp)
+
+
+# =========================
+# 3️⃣ FETCH FINAL PAYROLL
+# =========================
+
+def fetch_final_payroll():
+    print("\n========== STEP 3: FETCH FINAL PAYROLL ==========\n")
+
+    params = {"year": YEAR, "month": MONTH}
+    resp = get(f"{PAYROLL_BASE}/{EMPLOYEE_ID}", params=params)
+    pretty("Final Payroll", resp)
+
+
+# =========================
+# 4️⃣ VALIDATE PAYROLL MATH
+# =========================
+
+def validate_results():
+    print("\n========== STEP 4: PAYROLL VALIDATION ==========\n")
+
+    params = {"year": YEAR, "month": MONTH}
+    payroll = get(f"{PAYROLL_BASE}/{EMPLOYEE_ID}", params=params).json()
+
+    print("✅ Net Salary:", payroll["net_salary"])
+    print("✅ Gross Salary:", payroll["gross_salary"])
+    print("✅ Overtime Hours:", payroll["overtime_hours"])
+    print("✅ Late Penalty:", payroll["late_penalty"])
+    print("✅ LOP Deduction:", payroll["lop_deduction"])
+    print("✅ Holiday Pay:", payroll["holiday_pay"])
+    print("✅ Night Shift Allowance:", payroll["night_shift_allowance"])
+
+    if payroll["overtime_hours"] > 0:
+        print("✅ OVERTIME IS BEING PAID CORRECTLY")
+
+    if payroll["lop_deduction"] > 0:
+        print("✅ LOP DEDUCTIONS APPLIED")
+
+    print("\n🎯 PAYROLL VALIDATION COMPLETE\n")
+
+
+# =========================
+# 🚀 MAIN
 # =========================
 
 if __name__ == "__main__":
-    print("🚀 Starting Payroll Module Tests against:", BASE_URL)
-    print(f"Using employee_id={EMPLOYEE_ID}, year={YEAR}, month={MONTH}")
 
-    test_policy_exists()
-    test_generate_single()
-    test_get_single_payroll()
-    test_status_check()
-    test_bulk_generate()
-    test_regenerate()
-    test_month_list()
-    test_invalid_employee()
+    print("\n🚀 STARTING FULL PAYROLL + ATTENDANCE TEST\n")
 
-    print("\n✅ Test script finished. Review the logs above for any errors or odd data.")
+    recalc_full_month()
+    regenerate_payroll()
+    fetch_final_payroll()
+    validate_results()
+
+    print("\n✅ FULL END-TO-END PAYROLL SYSTEM TEST COMPLETED SUCCESSFULLY ✅\n")

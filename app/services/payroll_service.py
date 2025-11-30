@@ -1,15 +1,9 @@
-# app/services/payroll_policy_services.py
-
 from datetime import date, timedelta
 from typing import Dict, Any, Tuple
 
 from app.database.connection import get_connection
-
-# ✅ YOUR ACTUAL FILE NAMES
 from app.database.salary import SalaryDB
-from app.database.payroll import PayrollDB
-from app.database.payroll import PayrollPolicyDB
-from app.database.attendence import AttendanceDB
+from app.database.payroll import PayrollDB, PayrollPolicyDB
 
 
 class PayrollService:
@@ -48,7 +42,7 @@ class PayrollService:
         night_shift_allowance = float(policy["night_shift_allowance"])
 
         # ---------------------------------------------------------
-        # ✅ 2️⃣ FETCH SALARY STRUCTURE (FROM SalaryDB)
+        # ✅ 2️⃣ FETCH SALARY STRUCTURE
         # ---------------------------------------------------------
         salary_row = SalaryDB.get_active_for_date(employee_id, first_day)
 
@@ -86,56 +80,78 @@ class PayrollService:
         holiday_count = summary["holiday_count"]
         night_shift_days = summary["night_shift_days"]
 
+        # ---------------------------------------------------------
+        # ✅ 4️⃣ HANDLE ZERO WORKING DAYS
+        # ---------------------------------------------------------
         if working_days <= 0:
             payroll_row = PayrollDB.upsert_payroll(
-                employee_id,
-                year,
-                month,
-                0,
-                0,
-                0,
-                gross_monthly,
-                0,
+                employee_id=employee_id,
+                year=year,
+                month=month,
+
+                working_days=0,
+                present_days=0,
+                total_hours=0,
+
+                gross_salary=gross_monthly,
+                net_salary=0,
+
+                basic_pay=basic,
+                hra_pay=hra,
+                allowances_pay=allowances,
+
+                overtime_hours=0,
+                overtime_pay=0,
+
+                lop_days=0,
+                lop_deduction=0,
+
+                late_penalty=0,
+                early_penalty=0,
+
+                holiday_pay=0,
+                night_shift_allowance=0,
+
+                is_finalized=False
             )
+
             return {"payroll": payroll_row, "reason": "No working days"}
 
         per_day_salary = gross_monthly / float(working_days)
 
         # ---------------------------------------------------------
-        # ✅ 4️⃣ LATE + EARLY EXIT → LOP
+        # ✅ 5️⃣ LATE + EARLY EXIT → LOP
         # ---------------------------------------------------------
         combined_late_early = max(0, total_late_minutes - late_grace) + \
                               max(0, total_early_minutes - early_grace)
 
-        extra_lop_days = 0.0
-        if combined_late_early >= late_lop_threshold:
-            extra_lop_days = 0.5
-
+        extra_lop_days = 0.5 if combined_late_early >= late_lop_threshold else 0
         total_lop_days = lop_days_from_absent + extra_lop_days
         lop_amount = total_lop_days * per_day_salary
 
         # ---------------------------------------------------------
-        # ✅ 5️⃣ OVERTIME PAY
+        # ✅ 6️⃣ OVERTIME PAY
         # ---------------------------------------------------------
         if overtime_enabled:
             overtime_hours = total_overtime_minutes / 60.0
             hourly_rate = gross_monthly / (working_days * 8.0)
             overtime_pay = overtime_hours * hourly_rate * overtime_multiplier
         else:
+            overtime_hours = 0
             overtime_pay = 0.0
 
         # ---------------------------------------------------------
-        # ✅ 6️⃣ HOLIDAY DOUBLE PAY
+        # ✅ 7️⃣ HOLIDAY PAY
         # ---------------------------------------------------------
         holiday_pay = holiday_count * per_day_salary if holiday_double_pay else 0.0
 
         # ---------------------------------------------------------
-        # ✅ 7️⃣ NIGHT SHIFT ALLOWANCE
+        # ✅ 8️⃣ NIGHT SHIFT ALLOWANCE
         # ---------------------------------------------------------
         night_shift_bonus = night_shift_days * night_shift_allowance
 
         # ---------------------------------------------------------
-        # ✅ 8️⃣ FINAL NET SALARY
+        # ✅ 9️⃣ FINAL NET SALARY
         # ---------------------------------------------------------
         net_salary = (
             gross_monthly
@@ -146,21 +162,43 @@ class PayrollService:
             + night_shift_bonus
         )
 
+        # ---------------------------------------------------------
+        # ✅ 🔥 10️⃣ FINAL UPSERT (FULL DB PERSISTENCE FIX)
+        # ---------------------------------------------------------
         payroll_row = PayrollDB.upsert_payroll(
-            employee_id,
-            year,
-            month,
-            working_days,
-            paid_days,
-            total_net_hours,
-            gross_monthly,
-            net_salary,
+            employee_id=employee_id,
+            year=year,
+            month=month,
+
+            working_days=working_days,
+            present_days=paid_days,
+            total_hours=total_net_hours,
+
+            gross_salary=gross_monthly,
+            net_salary=net_salary,
+
+            basic_pay=basic,
+            hra_pay=hra,
+            allowances_pay=allowances,
+
+            overtime_hours=overtime_hours,
+            overtime_pay=overtime_pay,
+
+            lop_days=total_lop_days,
+            lop_deduction=lop_amount,
+
+            late_penalty=float(max(0, total_late_minutes - late_grace)),
+            early_penalty=float(max(0, total_early_minutes - early_grace)),
+
+            holiday_pay=holiday_pay,
+            night_shift_allowance=night_shift_bonus,
+
+            is_finalized=False
         )
 
         # ---------------------------------------------------------
-        # ✅ 9️⃣ LOCK ATTENDANCE (FROM AttendanceDB)
+        # ✅ 11️⃣ LOCK ATTENDANCE
         # ---------------------------------------------------------
-        # ✅ CORRECT
         PayrollDB.lock_attendance_for_period(employee_id, first_day, last_day)
 
         return {
@@ -200,25 +238,20 @@ class PayrollService:
             """
             SELECT
                 COUNT(*) FILTER (WHERE is_weekend = FALSE) AS working_days,
-
                 COUNT(*) FILTER (
                     WHERE status IN ('present','half_day','short_hours','holiday','on_leave','week_off')
                     AND is_weekend = FALSE
                 ) AS paid_days,
-
                 COUNT(*) FILTER (
                     WHERE status = 'absent'
                     AND is_weekend = FALSE
                 ) AS lop_days_from_absent,
-
                 COALESCE(SUM(net_hours), 0) AS total_net_hours,
                 COALESCE(SUM(late_minutes), 0) AS total_late_minutes,
                 COALESCE(SUM(early_exit_minutes), 0) AS total_early_minutes,
                 COALESCE(SUM(overtime_minutes), 0) AS total_overtime_minutes,
-
                 COUNT(*) FILTER (WHERE is_holiday = TRUE) AS holiday_count,
                 COUNT(*) FILTER (WHERE is_night_shift = TRUE) AS night_shift_days
-
             FROM attendance
             WHERE employee_id = %s
               AND date BETWEEN %s AND %s;
@@ -229,19 +262,6 @@ class PayrollService:
         row = cur.fetchone()
         cur.close()
         conn.close()
-
-        if not row:
-            return {
-                "working_days": 0,
-                "paid_days": 0,
-                "lop_days_from_absent": 0,
-                "total_net_hours": 0,
-                "total_late_minutes": 0,
-                "total_early_minutes": 0,
-                "total_overtime_minutes": 0,
-                "holiday_count": 0,
-                "night_shift_days": 0,
-            }
 
         return {
             "working_days": row[0] or 0,
