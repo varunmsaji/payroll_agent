@@ -1,74 +1,15 @@
 # app/database/payroll_db.py
 
 from datetime import date
-from typing import Optional
-
-import psycopg2
 from psycopg2.extras import RealDictCursor
+from app.database.connection import get_connection
 
-from .connection import get_connection
 
-
-class SalaryStructureDB:
-    """
-    Minimal helper to get salary structure for an employee.
-    Uses salary_structure table, falls back to employees.base_salary if needed.
-    """
-
-    @staticmethod
-    def get_active_for_date(employee_id: int, for_date: date) -> Optional[dict]:
-        """
-        Get the latest salary structure row active on a given date.
-        """
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        cur.execute(
-            """
-            SELECT *
-            FROM salary_structure
-            WHERE employee_id = %s
-              AND effective_from <= %s
-              AND (effective_to IS NULL OR effective_to >= %s)
-            ORDER BY effective_from DESC
-            LIMIT 1;
-            """,
-            (employee_id, for_date, for_date),
-        )
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
-        return row
-
-    @staticmethod
-    def get_base_salary_from_employee(employee_id: int) -> Optional[float]:
-        """
-        Fallback: if salary_structure is not defined, use employees.base_salary.
-        """
-        conn = get_connection()
-        cur = conn.cursor()
-
-        cur.execute(
-            """
-            SELECT base_salary
-            FROM employees
-            WHERE employee_id = %s;
-            """,
-            (employee_id,),
-        )
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
-
-        if row is None:
-            return None
-        return float(row[0]) if row[0] is not None else None
-
+# ============================================================
+# ✅ PAYROLL DATABASE (SALARY OUTPUT)
+# ============================================================
 
 class PayrollDB:
-    """
-    DB helper for payroll table and attendance locking.
-    """
 
     @staticmethod
     def upsert_payroll(
@@ -76,16 +17,15 @@ class PayrollDB:
         year: int,
         month: int,
         working_days: int,
-        present_days: int,
+        paid_days: int,
         total_hours: float,
         gross_salary: float,
         net_salary: float,
-    ) -> dict:
+    ):
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        cur.execute(
-            """
+        cur.execute("""
             INSERT INTO payroll (
                 employee_id,
                 month,
@@ -101,23 +41,21 @@ class PayrollDB:
             DO UPDATE SET
                 working_days = EXCLUDED.working_days,
                 present_days = EXCLUDED.present_days,
-                total_hours  = EXCLUDED.total_hours,
+                total_hours = EXCLUDED.total_hours,
                 gross_salary = EXCLUDED.gross_salary,
-                net_salary   = EXCLUDED.net_salary,
+                net_salary = EXCLUDED.net_salary,
                 generated_at = NOW()
             RETURNING *;
-            """,
-            (
-                employee_id,
-                month,
-                year,
-                working_days,
-                present_days,
-                total_hours,
-                gross_salary,
-                net_salary,
-            ),
-        )
+        """, (
+            employee_id,
+            month,
+            year,
+            working_days,
+            paid_days,
+            total_hours,
+            gross_salary,
+            net_salary
+        ))
 
         row = cur.fetchone()
         conn.commit()
@@ -126,42 +64,106 @@ class PayrollDB:
         return row
 
     @staticmethod
-    def get_payroll(employee_id: int, year: int, month: int) -> Optional[dict]:
+    def get_payroll(employee_id: int, month: int, year: int):
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        cur.execute(
-            """
+        cur.execute("""
             SELECT *
             FROM payroll
-            WHERE employee_id = %s AND year = %s AND month = %s;
-            """,
-            (employee_id, year, month),
-        )
+            WHERE employee_id = %s
+              AND month = %s
+              AND year = %s;
+        """, (employee_id, month, year))
+
         row = cur.fetchone()
         cur.close()
         conn.close()
         return row
 
     @staticmethod
-    def lock_attendance_for_period(employee_id: int, start_date: date, end_date: date) -> None:
-        """
-        Lock all attendance rows for that employee in the month, after payroll generation.
-        """
+    def lock_attendance_for_period(employee_id: int, start_date: date, end_date: date):
         conn = get_connection()
         cur = conn.cursor()
 
-        cur.execute(
-            """
+        cur.execute("""
             UPDATE attendance
-            SET is_payroll_locked = TRUE,
+            SET
+                is_payroll_locked = TRUE,
                 locked_at = NOW()
             WHERE employee_id = %s
               AND date BETWEEN %s AND %s;
-            """,
-            (employee_id, start_date, end_date),
-        )
+        """, (employee_id, start_date, end_date))
 
         conn.commit()
         cur.close()
         conn.close()
+        return True
+
+
+# ============================================================
+# ✅ PAYROLL POLICY DATABASE (ADMIN CONTROL)
+# ============================================================
+
+class PayrollPolicyDB:
+
+    @staticmethod
+    def get_active_policy():
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            SELECT *
+            FROM payroll_policies
+            WHERE active = TRUE
+            ORDER BY created_at DESC
+            LIMIT 1;
+        """)
+
+        policy = cur.fetchone()
+        cur.close()
+        conn.close()
+        return policy
+
+    @staticmethod
+    def update_policy(data: dict):
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Deactivate previous policies
+        cur.execute("UPDATE payroll_policies SET active = FALSE;")
+
+        # Insert new active policy
+        cur.execute("""
+            INSERT INTO payroll_policies (
+                late_grace_minutes,
+                late_lop_threshold_minutes,
+                early_exit_grace_minutes,
+                early_exit_lop_threshold_minutes,
+                overtime_enabled,
+                overtime_multiplier,
+                holiday_double_pay,
+                weekend_paid_only_if_worked,
+                night_shift_allowance,
+                active
+            )
+            VALUES (
+                %(late_grace_minutes)s,
+                %(late_lop_threshold_minutes)s,
+                %(early_exit_grace_minutes)s,
+                %(early_exit_lop_threshold_minutes)s,
+                %(overtime_enabled)s,
+                %(overtime_multiplier)s,
+                %(holiday_double_pay)s,
+                %(weekend_paid_only_if_worked)s,
+                %(night_shift_allowance)s,
+                TRUE
+            )
+            RETURNING *;
+        """, data)
+
+        policy = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        return policy
