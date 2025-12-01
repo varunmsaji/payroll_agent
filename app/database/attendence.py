@@ -61,6 +61,25 @@ class AttendanceEventDB:
         cur.close()
         conn.close()
         return rows
+    
+    @staticmethod
+    def get_all_events_for_employee(employee_id: int):
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            SELECT *
+        FROM attendance_events
+        WHERE employee_id = %s
+        ORDER BY event_time DESC
+        LIMIT 50
+    """, (employee_id,))
+
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return rows
+
 
 
 # ==========================================
@@ -184,6 +203,26 @@ class AttendanceDB:
         cur.close()
         conn.close()
         return rows
+    
+    @staticmethod
+    def get_attendance(employee_id: int):
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            SELECT *
+            FROM attendance
+            WHERE employee_id = %s
+            ORDER BY date DESC
+        """, (employee_id,))
+
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return rows
+    
+
+
 
 
 

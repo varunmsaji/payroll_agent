@@ -8,6 +8,8 @@ from app.database.employee_db import EmployeeDB
 from app.database.employee_shift_db import EmployeeShiftDB
 from app.database.salary import SalaryDB
 from app.database.payroll import PayrollDB
+from app.database.connection import get_connection
+from psycopg2.extras import RealDictCursor
 
 router = APIRouter(prefix="/hrms", tags=["Employee Details"])
 
@@ -238,3 +240,148 @@ def full_employee_details(employee_id: int):
         "latest_payroll": latest_payroll(employee_id),
         "payroll_history": payroll_history(employee_id)
     }
+
+
+
+
+@router.get("/employees/ui")
+def employees_for_ui(
+    search: Optional[str] = Query(None),
+    department: Optional[str] = Query(None),
+    status: Optional[str] = Query(None)
+):
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    sql = """
+        SELECT
+            e.employee_id,
+            e.first_name,
+            e.last_name,
+            e.email,
+            e.department,
+            e.designation,
+            e.status,
+            m.first_name || ' ' || m.last_name AS manager,
+            s.shift_name
+        FROM employees e
+        LEFT JOIN employee_manager em ON em.employee_id = e.employee_id
+        LEFT JOIN employees m ON m.employee_id = em.manager_id
+        LEFT JOIN employee_shifts es ON es.employee_id = e.employee_id
+        LEFT JOIN shifts s ON s.shift_id = es.shift_id
+        WHERE 1=1
+    """
+
+    params = []
+
+    if search:
+        sql += " AND (e.first_name ILIKE %s OR e.last_name ILIKE %s OR e.email ILIKE %s)"
+        like = f"%{search}%"
+        params.extend([like, like, like])
+
+    if department:
+        sql += " AND e.department = %s"
+        params.append(department)
+
+    if status:
+        sql += " AND e.status = %s"
+        params.append(status)
+
+    sql += " ORDER BY e.first_name"
+
+    cur.execute(sql, params)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+
+@router.get("/employee/{employee_id}/leaves")
+def employee_leaves(employee_id: int):
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute("""
+        SELECT *
+        FROM leave_requests
+        WHERE employee_id = %s
+        ORDER BY start_date DESC
+    """, (employee_id,))
+
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+
+
+
+
+@router.get("/payroll/ui-list")
+def payroll_ui_list(month: int, year: int):
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute("""
+        SELECT 
+            p.employee_id,
+            e.first_name || ' ' || e.last_name AS employee,
+            p.working_days,
+            p.present_days,
+            p.gross_salary,
+            p.net_salary
+        FROM payroll p
+        JOIN employees e ON e.employee_id = p.employee_id
+        WHERE p.month = %s AND p.year = %s
+        ORDER BY e.first_name
+    """, (month, year))
+
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+
+# ============================================================
+# ✅ 10️⃣ EMPLOYEE LEAVE BALANCE (UI FRIENDLY ✅)
+# ============================================================
+@router.get("/employee/{employee_id}/leave-balance")
+def leave_balance(employee_id: int):
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT 
+                lt.name AS leave_type,
+                lb.year,
+                lb.total_quota,
+                lb.used,
+                lb.remaining,
+                lb.carry_forwarded
+            FROM leave_balance lb
+            JOIN leave_types lt 
+                ON lt.leave_type_id = lb.leave_type_id
+            WHERE lb.employee_id = %s
+            ORDER BY lb.year DESC, lt.name;
+        """, (employee_id,))
+
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        result = []
+        for row in rows:
+            result.append({
+                "leave_type": row[0],
+                "year": row[1],
+                "total_quota": float(row[2]),
+                "used": float(row[3]),
+                "remaining": float(row[4]),
+                "carry_forwarded": float(row[5]),
+            })
+
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

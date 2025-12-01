@@ -6,7 +6,7 @@ from app.database.connection import get_connection
 
 
 # ============================================================
-# ✅ PAYROLL DATABASE (SALARY OUTPUT)
+# ✅ PAYROLL DATABASE (FULL PERSISTENCE)
 # ============================================================
 
 class PayrollDB:
@@ -16,11 +16,31 @@ class PayrollDB:
         employee_id: int,
         year: int,
         month: int,
+
         working_days: int,
-        paid_days: int,
+        present_days: int,
         total_hours: float,
+
         gross_salary: float,
         net_salary: float,
+
+        basic_pay: float,
+        hra_pay: float,
+        allowances_pay: float,
+
+        overtime_hours: float,
+        overtime_pay: float,
+
+        lop_days: float,
+        lop_deduction: float,
+
+        late_penalty: float,
+        early_penalty: float,
+
+        holiday_pay: float,
+        night_shift_allowance: float,
+
+        is_finalized: bool = False,
     ):
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -30,31 +50,112 @@ class PayrollDB:
                 employee_id,
                 month,
                 year,
+
                 working_days,
                 present_days,
                 total_hours,
+
                 gross_salary,
-                net_salary
+                net_salary,
+
+                basic_pay,
+                hra_pay,
+                allowances_pay,
+
+                overtime_hours,
+                overtime_pay,
+
+                lop_days,
+                lop_deduction,
+
+                late_penalty,
+                early_penalty,
+
+                holiday_pay,
+                night_shift_allowance,
+
+                is_finalized,
+                generated_at
             )
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            VALUES (
+                %s,%s,%s,
+
+                %s,%s,%s,
+
+                %s,%s,
+
+                %s,%s,%s,
+
+                %s,%s,
+
+                %s,%s,
+
+                %s,%s,
+
+                %s,%s,
+
+                %s,
+                NOW()
+            )
             ON CONFLICT (employee_id, month, year)
             DO UPDATE SET
+
                 working_days = EXCLUDED.working_days,
                 present_days = EXCLUDED.present_days,
                 total_hours = EXCLUDED.total_hours,
+
                 gross_salary = EXCLUDED.gross_salary,
                 net_salary = EXCLUDED.net_salary,
+
+                basic_pay = EXCLUDED.basic_pay,
+                hra_pay = EXCLUDED.hra_pay,
+                allowances_pay = EXCLUDED.allowances_pay,
+
+                overtime_hours = EXCLUDED.overtime_hours,
+                overtime_pay = EXCLUDED.overtime_pay,
+
+                lop_days = EXCLUDED.lop_days,
+                lop_deduction = EXCLUDED.lop_deduction,
+
+                late_penalty = EXCLUDED.late_penalty,
+                early_penalty = EXCLUDED.early_penalty,
+
+                holiday_pay = EXCLUDED.holiday_pay,
+                night_shift_allowance = EXCLUDED.night_shift_allowance,
+
+                is_finalized = EXCLUDED.is_finalized,
                 generated_at = NOW()
+
             RETURNING *;
         """, (
             employee_id,
             month,
             year,
+
             working_days,
-            paid_days,
+            present_days,
             total_hours,
+
             gross_salary,
-            net_salary
+            net_salary,
+
+            basic_pay,
+            hra_pay,
+            allowances_pay,
+
+            overtime_hours,
+            overtime_pay,
+
+            lop_days,
+            lop_deduction,
+
+            late_penalty,
+            early_penalty,
+
+            holiday_pay,
+            night_shift_allowance,
+
+            is_finalized
         ))
 
         row = cur.fetchone()
@@ -130,10 +231,8 @@ class PayrollPolicyDB:
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Deactivate previous policies
         cur.execute("UPDATE payroll_policies SET active = FALSE;")
 
-        # Insert new active policy
         cur.execute("""
             INSERT INTO payroll_policies (
                 late_grace_minutes,

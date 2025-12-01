@@ -212,33 +212,49 @@ class AttendanceService:
 
     @classmethod
     def _compute_work_and_breaks(cls, events):
+
         total_work = 0
         total_break = 0
         last_start = None
         break_start = None
 
-        day_check_in = events[0]["event_time"]
+        day_check_in = None
         last_checkout = None
 
         for ev in events:
             t = ev["event_time"]
-            if ev["event_type"] == "check_in":
+            etype = ev["event_type"]
+
+            # ✅ CHECK IN
+            if etype == "check_in":
                 last_start = t
-            elif ev["event_type"] == "break_start":
-                total_work += (t - last_start).total_seconds()
-                break_start = t
-                last_start = None
-            elif ev["event_type"] == "break_end":
-                total_break += (t - break_start).total_seconds()
-                last_start = t
-            elif ev["event_type"] == "check_out":
+                day_check_in = t
+
+            # ✅ BREAK START (only if working session exists)
+            elif etype == "break_start":
+                if last_start:
+                    total_work += (t - last_start).total_seconds()
+                    break_start = t
+                    last_start = None
+
+            # ✅ BREAK END (only if valid break was started)
+            elif etype == "break_end":
+                if break_start:
+                    total_break += (t - break_start).total_seconds()
+                    last_start = t
+                    break_start = None
+
+            # ✅ CHECK OUT (only if working session exists)
+            elif etype == "check_out":
                 last_checkout = t
                 if last_start:
                     total_work += (t - last_start).total_seconds()
                     last_start = None
 
-        day_check_out = last_checkout or events[-1]["event_time"]
+        day_check_out = last_checkout or day_check_in
+
         return total_work, total_break, day_check_in, day_check_out
+
 
     @classmethod
     def _compute_late(cls, shift, dt, actual_in):
