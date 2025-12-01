@@ -1,19 +1,37 @@
 from datetime import datetime, timedelta, time, date
 from app.database.connection import get_connection
-
-EMPLOYEE_ID = 35
-SHIFT_ID = 1
+from app.services.attendence_services import AttendanceService
 
 BASE_DATE = date(2025, 11, 1)
 
-def seed_event(employee_id, dt, event_type):
+print("⚠️  MOCK SEEDER: This WILL generate attendance for ALL employees")
+
+# ================================
+# FETCH ALL EMPLOYEES
+# ================================
+
+def get_all_employee_ids():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT employee_id FROM employees;")
+    ids = [row[0] for row in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return ids
+
+
+# ================================
+# RAW EVENT SEEDER
+# ================================
+
+def seed_event(employee_id, ts, event_type):
     conn = get_connection()
     cur = conn.cursor()
 
     cur.execute("""
         INSERT INTO attendance_events (employee_id, event_type, event_time, source)
         VALUES (%s, %s, %s, 'mock');
-    """, (employee_id, event_type, dt))
+    """, (employee_id, event_type, ts))
 
     conn.commit()
     cur.close()
@@ -21,72 +39,112 @@ def seed_event(employee_id, dt, event_type):
 
 
 # ================================
-# MOCK DAY GENERATORS
+# DAY TYPE GENERATORS
 # ================================
 
-def normal_day(day_offset):
-    d = BASE_DATE + timedelta(days=day_offset)
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(9, 0)), "check_in")
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(18, 0)), "check_out")
+def normal_day(e, d):
+    seed_event(e, datetime.combine(d, time(9, 0)), "check_in")
+    seed_event(e, datetime.combine(d, time(18, 0)), "check_out")
 
-def late_day(day_offset):
-    d = BASE_DATE + timedelta(days=day_offset)
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(10, 0)), "check_in")  # 1 hr late
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(18, 0)), "check_out")
+def late_day(e, d):
+    seed_event(e, datetime.combine(d, time(10, 0)), "check_in")
+    seed_event(e, datetime.combine(d, time(18, 0)), "check_out")
 
-def early_exit(day_offset):
-    d = BASE_DATE + timedelta(days=day_offset)
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(9, 0)), "check_in")
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(15, 0)), "check_out")  # early exit
+def early_exit(e, d):
+    seed_event(e, datetime.combine(d, time(9, 0)), "check_in")
+    seed_event(e, datetime.combine(d, time(15, 0)), "check_out")
 
-def overtime_day(day_offset):
-    d = BASE_DATE + timedelta(days=day_offset)
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(9, 0)), "check_in")
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(22, 0)), "check_out")  # overtime
+def overtime_day(e, d):
+    seed_event(e, datetime.combine(d, time(9, 0)), "check_in")
+    seed_event(e, datetime.combine(d, time(22, 0)), "check_out")
 
-def night_shift_day(day_offset):
-    d = BASE_DATE + timedelta(days=day_offset)
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(22, 0)), "check_in")
-    seed_event(EMPLOYEE_ID, datetime.combine(d + timedelta(days=1), time(6, 0)), "check_out")
+def night_shift_day(e, d):
+    seed_event(e, datetime.combine(d, time(22, 0)), "check_in")
+    seed_event(e, datetime.combine(d + timedelta(days=1), time(6, 0)), "check_out")
 
-def break_day(day_offset):
-    d = BASE_DATE + timedelta(days=day_offset)
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(9, 0)), "check_in")
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(13, 0)), "break_start")
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(13, 30)), "break_end")
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(18, 0)), "check_out")
+def break_day(e, d):
+    seed_event(e, datetime.combine(d, time(9, 0)), "check_in")
+    seed_event(e, datetime.combine(d, time(13, 0)), "break_start")
+    seed_event(e, datetime.combine(d, time(13, 30)), "break_end")
+    seed_event(e, datetime.combine(d, time(18, 0)), "check_out")
 
-def half_day(day_offset):
-    d = BASE_DATE + timedelta(days=day_offset)
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(9, 0)), "check_in")
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(12, 30)), "check_out")
+def half_day(e, d):
+    seed_event(e, datetime.combine(d, time(9, 0)), "check_in")
+    seed_event(e, datetime.combine(d, time(12, 30)), "check_out")
 
-def absent_day(day_offset):
-    pass  # no entry at all → absent
+def absent_day(e, d):
+    pass
 
-def holiday_work(day_offset):
-    d = BASE_DATE + timedelta(days=day_offset)
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(9, 30)), "check_in")
-    seed_event(EMPLOYEE_ID, datetime.combine(d, time(17, 30)), "check_out")
+def holiday_work(e, d):
+    seed_event(e, datetime.combine(d, time(9, 30)), "check_in")
+    seed_event(e, datetime.combine(d, time(17, 30)), "check_out")
 
 
 # ================================
-# RUN SEED
+# FORCE SAFE RECALC (UNLOCK FIRST)
+# ================================
+
+def recalc(employee_id, d):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE attendance
+        SET is_payroll_locked = FALSE,
+            locked_at = NULL
+        WHERE employee_id = %s AND date = %s;
+    """, (employee_id, d))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    AttendanceService.recalculate_for_date(employee_id, d)
+
+
+# ================================
+# SEED ONE EMPLOYEE
+# ================================
+
+def seed_employee(employee_id):
+
+    print(f"\n👤 Seeding Employee: {employee_id}")
+
+    schedule = [
+        normal_day,
+        late_day,
+        early_exit,
+        overtime_day,
+        night_shift_day,
+        holiday_work,
+        absent_day,
+        half_day,
+        break_day,
+        normal_day
+    ]
+
+    for i, func in enumerate(schedule):
+        d = BASE_DATE + timedelta(days=i)
+        func(employee_id, d)
+        recalc(employee_id, d)
+        print(f"  ✅ {d} -> {func.__name__}")
+
+
+# ================================
+# RUN FOR ALL EMPLOYEES
 # ================================
 
 if __name__ == "__main__":
 
-    print("🚀 Seeding Mock Attendance Data for Payroll Testing")
+    print("\n🚀 SEEDING MOCK ATTENDANCE FOR ALL EMPLOYEES\n")
 
-    normal_day(0)        # Nov 1
-    late_day(1)          # Nov 2
-    early_exit(2)        # Nov 3
-    overtime_day(3)     # Nov 4
-    night_shift_day(4)  # Nov 5
-    holiday_work(5)     # Nov 6
-    absent_day(6)       # Nov 7
-    half_day(7)         # Nov 8
-    break_day(8)        # Nov 9
-    normal_day(9)       # Nov 10
+    employees = get_all_employee_ids()
 
-    print("✅ Attendance Mock Data Seeded Successfully")
+    if not employees:
+        print("❌ No employees found in DB")
+        exit()
+
+    for emp in employees:
+        seed_employee(emp)
+
+    print("\n✅✅✅ ALL EMPLOYEES SEEDED SUCCESSFULLY ✅✅✅\n")
