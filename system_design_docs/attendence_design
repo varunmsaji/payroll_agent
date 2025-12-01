@@ -1,0 +1,319 @@
+✅ 1️⃣ ATTENDANCE_SYSTEM_DOCUMENTATION.md
+
+✅ Create a file with this exact name in your project root
+
+# 🕒 HRMS Attendance System – Complete Documentation
+
+This document explains how the Attendance System works in simple language.  
+It is written so that **HR teams, managers, testers, and developers** can all understand it clearly.
+
+---
+
+## 1. PURPOSE OF THE SYSTEM
+
+The Attendance System is designed to:
+
+- Track when employees:
+  - Check in
+  - Start breaks
+  - End breaks
+  - Check out
+- Automatically calculate:
+  - Total working hours
+  - Net working hours
+  - Break time
+  - Late coming
+  - Early leaving
+  - Overtime
+- Generate a **final payroll-safe attendance record per employee per day**
+- Lock records before payroll so no one can change salary data later
+
+---
+
+## 2. DATABASE STRUCTURE (SIMPLE EXPLANATION)
+
+### 2.1 `attendance_events` – Raw Activity Log
+
+This table stores **every single action**:
+
+| Column | Meaning |
+|--------|---------|
+| employee_id | Who performed the action |
+| event_type | check_in / check_out / break_start / break_end |
+| event_time | When the action happened |
+| source | manual / device / biometric |
+| meta | Extra details like IP, browser, GPS |
+
+This table **never changes** and is used for audit and debugging.
+
+---
+
+### 2.2 `attendance` – Final Payroll Attendance Table
+
+This table stores **one row per employee per day**:
+
+| Column | Meaning |
+|--------|---------|
+| check_in | First login time |
+| check_out | Final logout time |
+| total_hours | Time between first in and last out |
+| net_hours | Actual work time excluding breaks |
+| break_minutes | Total break time |
+| overtime_minutes | Extra work beyond shift |
+| late_minutes | How late employee arrived |
+| early_exit_minutes | How early employee left |
+| is_late | True if late |
+| is_early_checkout | True if left early |
+| is_overtime | True if worked overtime |
+| is_weekend | Saturday/Sunday |
+| is_holiday | Official holiday |
+| is_night_shift | Night duty |
+| status | present / half_day / short_hours / absent / week_off / holiday / on_leave |
+| is_payroll_locked | Locked for salary |
+| locked_at | Time when locked |
+
+This is the **main payroll table**.
+
+---
+
+## 3. HOW ATTENDANCE IS CAPTURED
+
+Whenever an employee performs an action:
+
+| Action | Database Effect |
+|--------|-----------------|
+| Check-in | Adds row in `attendance_events` |
+| Break Start | Adds row in `attendance_events` |
+| Break End | Adds row in `attendance_events` |
+| Check-out | Adds row in `attendance_events` |
+
+Immediately after each action, the system:
+
+✅ Recalculates attendance for that day  
+✅ Updates the `attendance` table  
+
+---
+
+## 4. SHIFT & WORK WINDOW LOGIC
+
+The system checks the employee shift:
+
+- Morning shift → 9:00 AM to 6:00 PM
+- Night shift → 9:00 PM to 6:00 AM (next day)
+
+Attendance calculations only happen **inside the shift window**.
+
+If no shift is assigned:
+- Default work window = 12:00 AM to 11:59 PM
+- Default required hours = 8 hours
+
+---
+
+## 5. HOW WORK HOURS ARE CALCULATED
+
+### Example Timeline:
+
+| Time | Action |
+|------|--------|
+| 09:10 | Check-in |
+| 13:00 | Break start |
+| 13:30 | Break end |
+| 18:05 | Check-out |
+
+### System Calculates:
+
+- Total time = 09:10 → 18:05 ≈ 8.91 hours
+- Break time = 30 minutes
+- Net work hours = 8.41 hours
+
+---
+
+## 6. LATE COMING CALCULATION
+
+- Shift start time is compared with actual check-in
+- Grace time = **10 minutes**
+- If employee is late beyond grace → marked as **Late**
+
+Example:
+- Shift starts at 09:00  
+- Employee checks in at 09:12  
+→ Late = 12 minutes → Late marked ✅
+
+---
+
+## 7. EARLY EXIT CALCULATION
+
+- Shift end time is compared with check-out time
+- Grace time = **10 minutes**
+- Leaving earlier than grace → marked Early Checkout ✅
+
+---
+
+## 8. OVERTIME CALCULATION
+
+If:
+
+
+
+Net Work Hours > Required Shift Hours
+
+
+Then:
+
+
+
+Overtime Minutes = Extra Minutes Worked
+
+
+---
+
+## 9. ATTENDANCE STATUS DECISION
+
+| Condition | Status |
+|----------|--------|
+| Net hours ≥ 75% of shift | present |
+| Net hours ≥ 50% | half_day |
+| Less than 50% | short_hours |
+| No events + leave approved | on_leave |
+| No events + holiday | holiday |
+| No events + weekend | week_off |
+| No events | absent |
+
+---
+
+## 10. PAYROLL LOCK SYSTEM
+
+Once HR locks attendance:
+
+- `is_payroll_locked` becomes TRUE
+- No changes allowed:
+  - No recalculation
+  - No override
+  - No new attendance edits
+
+This guarantees **salary safety & legal protection**.
+
+---
+
+## 11. MANUAL OVERRIDE SYSTEM (HR ONLY)
+
+HR can correct:
+
+- Wrong check-in time
+- Wrong check-out time
+- Net working hours
+- Attendance status
+
+⚠️ Overrides only work when:
+
+
+
+is_payroll_locked == FALSE
+
+
+---
+
+## 12. REPORTING & DASHBOARDS SUPPORTED
+
+✅ Employee Dashboard  
+✅ Manager Team Attendance  
+✅ HR Company Attendance  
+✅ Late Coming Report  
+✅ Overtime Report  
+✅ Payroll Lock Panel  
+✅ Raw Attendance Logs  
+
+---
+
+## ✅ FINAL SUMMARY
+
+This HRMS Attendance System:
+
+✔ Automatically records all work activity  
+✔ Calculates payroll-ready attendance  
+✔ Handles leave, holidays, weekends  
+✔ Prevents salary manipulation  
+✔ Supports audit and compliance  
+
+---
+
+✅ This system is suitable for:
+- Corporate HRMS
+- Salary processing
+- Factory staff tracking
+- Office workforce attendance
+
+✅ 2️⃣ TEXT FLOWCHART – ATTENDANCE SYSTEM WORKING
+
+✅ This can be shared with designers, managers, and testers
+
+┌──────────────────────────────┐
+│       EMPLOYEE ACTION        │
+│ (Check-In / Break / CheckOut)│
+└──────────────┬───────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│  SAVE RAW EVENT in DATABASE  │
+│   (attendance_events table) │
+└──────────────┬───────────────┘
+               │
+               ▼
+┌──────────────────────────────────────┐
+│  SYSTEM STARTS DAILY RECALCULATION  │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│ Is Attendance Payroll Locked│
+└──────────────┬───────────────┘
+       YES ◄───┘               └───► NO
+   ❌ Stop Process                  ▼
+                          ┌─────────────────────┐
+                          │ Get Employee Shift  │
+                          └──────────┬──────────┘
+                                     │
+                                     ▼
+                          ┌─────────────────────┐
+                          │ Load Shift Time     │
+                          │ (Day / Night Logic)│
+                          └──────────┬──────────┘
+                                     │
+                                     ▼
+                          ┌─────────────────────┐
+                          │ Fetch Today's Events│
+                          └──────────┬──────────┘
+                                     │
+                                     ▼
+                     ┌────────────────────────────┐
+                     │ Any Events Found Today?    │
+                     └────────┬─────────┬─────────┘
+                              YES        NO
+                              │          │
+                              ▼          ▼
+               ┌─────────────────────┐   ┌────────────────────────┐
+               │ Calculate Work Time │   │ Is Holiday / Leave /   │
+               │ Calculate Break Time│   │ Weekend?               │
+               └─────────┬───────────┘   └──────────┬─────────────┘
+                         │                          │
+                         ▼                          ▼
+               ┌─────────────────────┐   ┌────────────────────────┐
+               │ Calculate Late      │   │ Set Status: Holiday /  │
+               │ Calculate Early Exit│   │ Leave / Week-off /     │
+               │ Calculate Overtime  │   │ Absent                 │
+               └─────────┬───────────┘   └──────────┬─────────────┘
+                         │                          │
+                         ▼                          ▼
+               ┌────────────────────────────────────────┐
+               │ Decide Attendance Status (Present,     │
+               │ Half-Day, Short Hours)                 │
+               └─────────┬─────────────────────────────┘
+                         │
+                         ▼
+               ┌────────────────────────────────────────┐
+               │ Save Final Attendance Row into         │
+               │         attendance table               │
+               └────────────────────────────────────────┘
+                         │
+                         ▼
+               ✅ Attendance Ready for Payroll & Reports

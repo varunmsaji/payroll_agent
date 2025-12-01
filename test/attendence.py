@@ -1,222 +1,248 @@
-"""
-Simple end-to-end tester for HRMS Attendance Module
-
-Make sure your FastAPI app is running, e.g.:
-    uvicorn app.main:app --reload
-
-Then run:
-    python test_attendance_module.py
-"""
-
 import requests
 from datetime import date
-import json
 import time
-from typing import Optional, Dict
 
-# =========================
-# CONFIG
-# =========================
-BASE_URL = "http://localhost:8000"   # change if needed
-EMPLOYEE_ID = 35
-                    # use an existing employee_id in your DB
+# ============================
+# CONFIG (EDIT THIS)
+# ============================
 
-ATTENDANCE_BASE = f"{BASE_URL}/hrms/attendance"
+BASE_URL = "http://127.0.0.1:8000/hrms/attendance"
 
+EMPLOYEE_ID = 35   # 🔴 Change to a real employee ID in your DB
+MANAGER_ID = 27    # 🔴 Change to a real manager ID
 
-# =========================
-# HELPER FUNCTIONS
-# =========================
-def pretty_print(title: str, resp: requests.Response):
-    print("\n" + "=" * 60)
-    print(f"🔹 {title}")
-    print(f"Status Code: {resp.status_code}")
-    try:
-        data = resp.json()
-        print("Response JSON:")
-        print(json.dumps(data, indent=2, default=str))
-    except Exception:
-        print("Raw Response Text:")
-        print(resp.text)
-    print("=" * 60 + "\n")
+TODAY = date.today().isoformat()
 
 
-def post_json(url: str, payload: Optional[Dict] = None, params: Optional[Dict] = None) -> requests.Response:
-    if payload is None:
-        payload = {}
-    return requests.post(url, json=payload, params=params or {})
+# ============================
+# EMPLOYEE ACTION TESTS
+# ============================
+
+def test_check_in():
+    print("\n🟢 TEST: CHECK-IN")
+    url = f"{BASE_URL}/check-in"
+    payload = {
+        "employee_id": EMPLOYEE_ID,
+        "source": "manual",
+        "meta": {"device": "browser"}
+    }
+
+    res = requests.post(url, json=payload)
+    print(res.status_code, res.json())
 
 
-def get_json(url: str, params: Optional[Dict] = None) -> requests.Response:
-    return requests.get(url, params=params or {})
+def test_break_start():
+    print("\n🟡 TEST: BREAK START")
+    url = f"{BASE_URL}/break/start"
+    payload = {
+        "employee_id": EMPLOYEE_ID,
+        "source": "manual"
+    }
+
+    res = requests.post(url, json=payload)
+    print(res.status_code, res.json())
 
 
-# =========================
-# TEST SCENARIOS
-# =========================
+def test_break_end():
+    print("\n🟡 TEST: BREAK END")
+    url = f"{BASE_URL}/break/end"
+    payload = {
+        "employee_id": EMPLOYEE_ID,
+        "source": "manual"
+    }
 
-def test_basic_check_in_out():
-    print("\n========== TEST 1: BASIC CHECK-IN / CHECK-OUT ==========")
-
-    # 1) Check-in
-    resp_in = post_json(
-        f"{ATTENDANCE_BASE}/check-in",
-        {
-            "employee_id": EMPLOYEE_ID,
-            "source": "test_script",
-            "meta": {"scenario": "basic_check_in_out"},
-        },
-    )
-    pretty_print("Check-in", resp_in)
-
-    time.sleep(1)
-
-    # 2) Check-out
-    resp_out = post_json(
-        f"{ATTENDANCE_BASE}/check-out",
-        {
-            "employee_id": EMPLOYEE_ID,
-            "source": "test_script",
-            "meta": {"scenario": "basic_check_in_out"},
-        },
-    )
-    pretty_print("Check-out", resp_out)
-
-    # 3) Fetch attendance for today
-    today = date.today().isoformat()
-    resp_get = get_json(
-        f"{ATTENDANCE_BASE}/employee/{EMPLOYEE_ID}",
-        params={"start_date": today, "end_date": today},
-    )
-    pretty_print("Get Attendance for Today (after basic check-in/out)", resp_get)
+    res = requests.post(url, json=payload)
+    print(res.status_code, res.json())
 
 
-def test_break_flow():
-    print("\n========== TEST 2: CHECK-IN → BREAK → BREAK END → CHECK-OUT ==========")
+def test_check_out():
+    print("\n🔴 TEST: CHECK-OUT")
+    url = f"{BASE_URL}/check-out"
+    payload = {
+        "employee_id": EMPLOYEE_ID,
+        "source": "manual"
+    }
 
-    today = date.today().isoformat()
-
-    # 1) Check-in
-    resp_in = post_json(
-        f"{ATTENDANCE_BASE}/check-in",
-        {
-            "employee_id": EMPLOYEE_ID,
-            "source": "test_script",
-            "meta": {"scenario": "break_flow"},
-        },
-    )
-    pretty_print("Check-in (break flow)", resp_in)
-
-    time.sleep(1)
-
-    # 2) Break start
-    resp_break_start = post_json(
-        f"{ATTENDANCE_BASE}/break/start",
-        {
-            "employee_id": EMPLOYEE_ID,
-            "source": "test_script",
-            "meta": {"scenario": "break_flow"},
-        },
-    )
-    pretty_print("Break Start", resp_break_start)
-
-    time.sleep(1)
-
-    # 3) Break end
-    resp_break_end = post_json(
-        f"{ATTENDANCE_BASE}/break/end",
-        {
-            "employee_id": EMPLOYEE_ID,
-            "source": "test_script",
-            "meta": {"scenario": "break_flow"},
-        },
-    )
-    pretty_print("Break End", resp_break_end)
-
-    time.sleep(1)
-
-    # 4) Check-out
-    resp_out = post_json(
-        f"{ATTENDANCE_BASE}/check-out",
-        {
-            "employee_id": EMPLOYEE_ID,
-            "source": "test_script",
-            "meta": {"scenario": "break_flow"},
-        },
-    )
-    pretty_print("Check-out (break flow)", resp_out)
-
-    # 5) Fetch attendance row
-    resp_get = get_json(
-        f"{ATTENDANCE_BASE}/employee/{EMPLOYEE_ID}",
-        params={"start_date": today, "end_date": today},
-    )
-    pretty_print("Get Attendance for Today (after break flow)", resp_get)
+    res = requests.post(url, json=payload)
+    print(res.status_code, res.json())
 
 
-def test_recalculate_and_lock():
-    print("\n========== TEST 3: RECALCULATE & PAYROLL LOCK ==========")
+# ============================
+# DASHBOARD TESTS
+# ============================
 
-    today = date.today().isoformat()
-
-    # 1) Recalculate today ✅ FIXED: params now supported
-    resp_recalc = post_json(
-        f"{ATTENDANCE_BASE}/recalculate/{EMPLOYEE_ID}",
-        params={"dt": today},
-    )
-    pretty_print("Recalculate Attendance for Today", resp_recalc)
-
-    # 2) Lock attendance for today
-    resp_lock = post_json(
-        f"{ATTENDANCE_BASE}/lock/{EMPLOYEE_ID}",
-        params={"dt": today},
-    )
-    pretty_print("Lock Attendance for Today", resp_lock)
-
-    # 3) Try recalculating again after lock (should fail)
-    resp_recalc_locked = post_json(
-        f"{ATTENDANCE_BASE}/recalculate/{EMPLOYEE_ID}",
-        params={"dt": today},
-    )
-    pretty_print("Recalculate After Lock (should fail)", resp_recalc_locked)
+def test_today_status():
+    print("\n📊 TEST: TODAY STATUS")
+    url = f"{BASE_URL}/today/{EMPLOYEE_ID}"
+    res = requests.get(url)
+    print(res.status_code)
+    print(res.json())
 
 
-def test_invalid_flows():
-    print("\n========== TEST 4: INVALID FLOWS / ERROR HANDLING ==========")
+def test_employee_attendance():
+    print("\n📅 TEST: EMPLOYEE MONTHLY ATTENDANCE")
+    url = f"{BASE_URL}/employee/{EMPLOYEE_ID}"
+    params = {
+        "start_date": "2025-01-01",
+        "end_date": TODAY
+    }
 
-    # 1) Try check-out without check-in (assumes no active session)
-    resp_checkout_no_checkin = post_json(
-        f"{ATTENDANCE_BASE}/check-out",
-        {
-            "employee_id": EMPLOYEE_ID,
-            "source": "test_script",
-            "meta": {"scenario": "invalid_no_checkin"},
-        },
-    )
-    pretty_print("Check-out without active check-in (should error)", resp_checkout_no_checkin)
-
-    # 2) Try break-end without break-start
-    resp_break_end_no_start = post_json(
-        f"{ATTENDANCE_BASE}/break/end",
-        {
-            "employee_id": EMPLOYEE_ID,
-            "source": "test_script",
-            "meta": {"scenario": "invalid_no_break_start"},
-        },
-    )
-    pretty_print("Break End without Break Start (should error)", resp_break_end_no_start)
+    res = requests.get(url, params=params)
+    print(res.status_code)
+    for row in res.json():
+        print(row)
 
 
-# =========================
-# MAIN
-# =========================
+def test_team_attendance():
+    print("\n👥 TEST: TEAM ATTENDANCE (MANAGER VIEW)")
+    url = f"{BASE_URL}/team/{MANAGER_ID}"
+    params = {"date": TODAY}
+
+    res = requests.get(url, params=params)
+    print(res.status_code)
+    for row in res.json():
+        print(row)
+
+
+def test_company_attendance():
+    print("\n🏢 TEST: COMPANY DAILY ATTENDANCE (HR VIEW)")
+    url = f"{BASE_URL}/company"
+    params = {"date_": TODAY}
+
+    res = requests.get(url, params=params)
+    print(res.status_code)
+    for row in res.json():
+        print(row)
+
+
+# ============================
+# REPORTS TESTS
+# ============================
+
+def test_late_report():
+    print("\n⏰ TEST: LATE REPORT")
+    url = f"{BASE_URL}/reports/late"
+    params = {
+        "start_date": "2025-01-01",
+        "end_date": TODAY
+    }
+
+    res = requests.get(url, params=params)
+    print(res.status_code)
+    for row in res.json():
+        print(row)
+
+
+def test_overtime_report():
+    print("\n⏳ TEST: OVERTIME REPORT")
+    url = f"{BASE_URL}/reports/overtime"
+    params = {
+        "start_date": "2025-01-01",
+        "end_date": TODAY
+    }
+
+    res = requests.get(url, params=params)
+    print(res.status_code)
+    for row in res.json():
+        print(row)
+
+
+# ============================
+# RAW LOGS TEST
+# ============================
+
+def test_raw_logs():
+    print("\n📜 TEST: RAW ATTENDANCE LOGS")
+    url = f"{BASE_URL}/logs/{EMPLOYEE_ID}"
+    res = requests.get(url)
+
+    print(res.status_code)
+    for row in res.json():
+        print(row)
+
+
+# ============================
+# PAYROLL LOCK / UNLOCK
+# ============================
+
+def test_lock():
+    print("\n🔒 TEST: PAYROLL LOCK")
+    url = f"{BASE_URL}/lock/{EMPLOYEE_ID}"
+    params = {"dt": TODAY}
+
+    res = requests.post(url, params=params)
+    print(res.status_code, res.json())
+
+
+def test_unlock():
+    print("\n🔓 TEST: PAYROLL UNLOCK")
+    url = f"{BASE_URL}/unlock/{EMPLOYEE_ID}"
+    params = {"dt": TODAY}
+
+    res = requests.post(url, params=params)
+    print(res.status_code, res.json())
+
+
+# ============================
+# HR MANUAL OVERRIDE
+# ============================
+
+def test_override():
+    print("\n✏️ TEST: HR MANUAL OVERRIDE")
+    url = f"{BASE_URL}/override/{EMPLOYEE_ID}"
+    params = {"dt": TODAY}
+
+    payload = {
+        "check_in": "09:00",
+        "check_out": "18:00",
+        "net_hours": 8.5,
+        "status": "present"
+    }
+
+    res = requests.put(url, params=params, json=payload)
+    print(res.status_code, res.json())
+
+
+# ============================
+# MAIN RUNNER
+# ============================
+
 if __name__ == "__main__":
-    print("🚀 Starting Attendance Module Tests against:", BASE_URL)
-    print(f"Using employee_id={EMPLOYEE_ID}")
 
-    test_basic_check_in_out()
-    test_break_flow()
-    test_recalculate_and_lock()
-    test_invalid_flows()
+    print("\n==============================")
+    print("🚀 STARTING ATTENDANCE API TEST")
+    print("==============================")
 
-    print("\n✅ Test script finished. Review the logs above for any errors or odd data.")
+    test_check_in()
+    time.sleep(2)
+
+    test_break_start()
+    time.sleep(2)
+
+    test_break_end()
+    time.sleep(2)
+
+    test_check_out()
+    time.sleep(2)
+
+    test_today_status()
+
+    test_employee_attendance()
+
+    test_team_attendance()
+
+    test_company_attendance()
+
+    test_late_report()
+
+    test_overtime_report()
+
+    test_raw_logs()
+
+    test_lock()
+
+    test_override()
+
+    test_unlock()
+
+    print("\n✅✅✅ ALL TESTS COMPLETED ✅✅✅")
