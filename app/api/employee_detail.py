@@ -10,6 +10,13 @@ from app.database.salary import SalaryDB
 from app.database.payroll import PayrollDB
 from app.database.connection import get_connection
 from psycopg2.extras import RealDictCursor
+from app.database.leave_database import (
+    LeaveTypeDB,
+    LeaveBalanceDB,
+    LeaveRequestDB,
+    LeaveHistoryDB,
+    EmployeeSalaryDB,
+)
 
 router = APIRouter(prefix="/hrms", tags=["Employee Details"])
 
@@ -352,19 +359,20 @@ def leave_balance(employee_id: int):
         cur = conn.cursor()
 
         cur.execute("""
-            SELECT 
-                lt.name AS leave_type,
-                lb.year,
-                lb.total_quota,
-                lb.used,
-                lb.remaining,
-                lb.carry_forwarded
-            FROM leave_balance lb
-            JOIN leave_types lt 
-                ON lt.leave_type_id = lb.leave_type_id
-            WHERE lb.employee_id = %s
-            ORDER BY lb.year DESC, lt.name;
-        """, (employee_id,))
+        SELECT 
+            lt.name AS leave_type,
+            lb.year,
+            lb.total_quota,
+            lb.used,
+            lb.remaining,
+            lb.carry_forwarded
+        FROM employee_leave_balance lb
+        JOIN leave_types lt 
+            ON lt.leave_type_id = lb.leave_type_id
+        WHERE lb.employee_id = %s
+        ORDER BY lb.year DESC, lt.name;
+    """, (employee_id,))
+
 
         rows = cur.fetchall()
         cur.close()
@@ -385,3 +393,4 @@ def leave_balance(employee_id: int):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
