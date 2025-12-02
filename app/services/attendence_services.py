@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, date, time, timedelta
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
 from app.database.attendence import (
     AttendanceDB,
@@ -10,6 +10,88 @@ from app.database.attendence import (
     ShiftDB,
 )
 from app.database.connection import get_connection
+
+
+# =====================================
+# ATTENDANCE POLICY (DYNAMIC + HISTORY)
+# =====================================
+class AttendancePolicyDB:
+    """
+    Reads attendance policy from attendance_policies table.
+
+    ✅ Supports history using created_at:
+       - For a given attendance date (dt),
+         we pick the latest policy where created_at <= end of that day.
+    ✅ If table is missing or empty, we fall back to safe defaults.
+    """
+
+    DEFAULT_POLICY = {
+        "late_grace_minutes": 10,
+        "early_exit_grace_minutes": 10,
+        "full_day_fraction": 0.75,
+        "half_day_fraction": 0.5,
+        "night_shift_enabled": True,
+        "overtime_enabled": True,
+    }
+
+    @staticmethod
+    def get_policy_for_date(dt: date) -> Dict[str, Any]:
+        """
+        Returns the policy that was active for the given calendar date.
+
+        Logic:
+        - Use attendance_policies.created_at as the "effective from" timestamp.
+        - For a given dt, pick the LAST row where created_at <= dt 23:59:59.
+        - If nothing matches, fall back to DEFAULT_POLICY.
+        """
+        conn = None
+        try:
+            conn = get_connection()
+            cur = conn.cursor()
+
+            # We look for the latest policy created on or before the end of that date.
+            end_of_day = datetime.combine(dt, time(23, 59, 59))
+
+            cur.execute(
+                """
+                SELECT
+                    late_grace_minutes,
+                    early_exit_grace_minutes,
+                    full_day_fraction,
+                    half_day_fraction,
+                    night_shift_enabled,
+                    overtime_enabled
+                FROM attendance_policies
+                WHERE created_at <= %s
+                ORDER BY created_at DESC
+                LIMIT 1;
+                """,
+                (end_of_day,),
+            )
+            row = cur.fetchone()
+            cur.close()
+
+            if not row:
+                # No policy yet for that date → default policy
+                return AttendancePolicyDB.DEFAULT_POLICY
+
+            # row is a tuple, map accordingly
+            return {
+                "late_grace_minutes": int(row[0]),
+                "early_exit_grace_minutes": int(row[1]),
+                "full_day_fraction": float(row[2]),
+                "half_day_fraction": float(row[3]),
+                "night_shift_enabled": bool(row[4]),
+                "overtime_enabled": bool(row[5]),
+            }
+
+        except Exception:
+            # If table doesn't exist or any DB error → fallback to defaults
+            return AttendancePolicyDB.DEFAULT_POLICY
+
+        finally:
+            if conn:
+                conn.close()
 
 
 # =====================================
@@ -42,10 +124,18 @@ class LeaveDB:
 # ATTENDANCE SERVICE (FINAL PAYROLL SYNC)
 # =====================================
 class AttendanceService:
+    """
+    🔥 NOW DYNAMIC:
+    Attendance behaviour is controlled by DB policy (attendance_policies),
+    with history support via created_at.
 
+    These attributes are the "currently loaded" policy for the date
+    being calculated. They are updated inside recalculate_for_date().
+    """
+
+    # Default fallbacks (used if DB table is missing/empty)
     LATE_GRACE_MINUTES = 10
     EARLY_GRACE_MINUTES = 10
-
     FULL_DAY_FRACTION = 0.75
     HALF_DAY_FRACTION = 0.5
 
@@ -91,6 +181,14 @@ class AttendanceService:
     @classmethod
     def recalculate_for_date(cls, employee_id: int, dt: date):
 
+        # 0️⃣ LOAD POLICY FOR THAT DATE (DYNAMIC + HISTORY)
+        policy = AttendancePolicyDB.get_policy_for_date(dt)
+
+        cls.LATE_GRACE_MINUTES = int(policy["late_grace_minutes"])
+        cls.EARLY_GRACE_MINUTES = int(policy["early_exit_grace_minutes"])
+        cls.FULL_DAY_FRACTION = float(policy["full_day_fraction"])
+        cls.HALF_DAY_FRACTION = float(policy["half_day_fraction"])
+
         existing = AttendanceDB.get_by_employee_and_date(employee_id, dt)
         if existing and existing.get("is_payroll_locked"):
             raise ValueError("Attendance locked for payroll.")
@@ -118,7 +216,7 @@ class AttendanceService:
 
         late_minutes, is_late = cls._compute_late(shift, dt, check_in)
         early_exit_minutes, is_early = cls._compute_early_checkout(shift, dt, check_out)
-        overtime_minutes, is_overtime = cls._compute_overtime(net_hours, required_hours)
+        overtime_minutes, is_overtime = cls._compute_overtime(net_hours, required_hours, policy)
 
         status = cls._decide_status(net_hours, required_hours, is_weekend, is_holiday, has_leave)
 
@@ -255,7 +353,6 @@ class AttendanceService:
 
         return total_work, total_break, day_check_in, day_check_out
 
-
     @classmethod
     def _compute_late(cls, shift, dt, actual_in):
         if not shift or not actual_in:
@@ -280,7 +377,17 @@ class AttendanceService:
         return (diff, True) if diff > cls.EARLY_GRACE_MINUTES else (0, False)
 
     @classmethod
-    def _compute_overtime(cls, net_hours, required_hours):
+    def _compute_overtime(cls, net_hours, required_hours, policy: Dict[str, Any]):
+        """
+        We keep overtime_minutes calculation here, but whether we PAY for it
+        is controlled later by PayrollPolicy (already in your payroll_service).
+        """
+        # night_shift_enabled, overtime_enabled are available in policy
+        overtime_enabled = bool(policy.get("overtime_enabled", True))
+
+        if not overtime_enabled:
+            return 0, False
+
         if net_hours > required_hours:
             mins = int((net_hours - required_hours) * 60)
             return mins, True
@@ -288,6 +395,8 @@ class AttendanceService:
 
     @classmethod
     def _decide_status(cls, net_hours, required_hours, is_weekend, is_holiday, has_leave):
+        # NOTE: We keep weekend/holiday/leave logic as-is.
+        # FULL_DAY_FRACTION and HALF_DAY_FRACTION now come from DB policy.
         if net_hours >= required_hours * cls.FULL_DAY_FRACTION:
             return "present"
         elif net_hours >= required_hours * cls.HALF_DAY_FRACTION:
