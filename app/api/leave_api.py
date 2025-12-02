@@ -184,3 +184,71 @@ def calculate_salary_after_leaves(employee_id: int, year: int, month: int):
         "deduction": deduction,
         "final_salary": final_salary
     }
+
+
+# ============================================================
+# ✅ 7️⃣ ADMIN LEAVE DASHBOARD STATS
+# ============================================================
+
+@router.get("/admin/stats")
+def leave_admin_stats():
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    # ✅ Overall Status Counts
+    cur.execute("""
+        SELECT 
+            COUNT(*) FILTER (WHERE status = 'pending')  AS pending,
+            COUNT(*) FILTER (WHERE status = 'approved') AS approved,
+            COUNT(*) FILTER (WHERE status = 'rejected') AS rejected,
+            COUNT(*) AS total
+        FROM leave_requests;
+    """)
+    overall = cur.fetchone()
+
+    # ✅ This Month Requests
+    cur.execute("""
+        SELECT COUNT(*) AS this_month
+        FROM leave_requests
+        WHERE DATE_TRUNC('month', applied_on) = DATE_TRUNC('month', CURRENT_DATE);
+    """)
+    monthly = cur.fetchone()
+
+    # ✅ Paid vs Unpaid (From Leave History)
+    cur.execute("""
+        SELECT 
+            COUNT(*) FILTER (WHERE t.is_paid = TRUE)  AS paid_leaves,
+            COUNT(*) FILTER (WHERE t.is_paid = FALSE) AS unpaid_leaves
+        FROM leave_history h
+        JOIN leave_types t ON h.leave_type_id = t.leave_type_id;
+    """)
+    paid_stats = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    return {
+        "total_requests": overall["total"],
+        "pending_requests": overall["pending"],
+        "approved_requests": overall["approved"],
+        "rejected_requests": overall["rejected"],
+        "this_month_requests": monthly["this_month"],
+        "paid_leaves": paid_stats["paid_leaves"],
+        "unpaid_leaves": paid_stats["unpaid_leaves"]
+    }
+
+
+# ============================================================
+# ✅ 8️⃣ ADMIN LEAVE APPROVAL
+# ============================================================
+
+@router.post("/admin/approve/{leave_id}")
+def admin_approve_leave(leave_id: int):
+    updated = LeaveRequestDB.update_leave_status_only(leave_id, "approved")
+    return {"message": "Leave approved", "data": updated}
+
+
+@router.post("/admin/reject/{leave_id}")
+def admin_reject_leave(leave_id: int):
+    updated = LeaveRequestDB.update_leave_status_only(leave_id, "rejected")
+    return {"message": "Leave rejected", "data": updated}
