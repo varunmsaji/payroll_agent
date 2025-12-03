@@ -2,6 +2,9 @@ from fastapi import APIRouter, HTTPException
 from datetime import date
 from typing import Dict, Any
 
+from psycopg2.extras import RealDictCursor
+from app.database.connection import get_connection   # ✅ ENSURE THIS EXISTS
+
 from app.database.leave_database import (
     LeaveTypeDB,
     LeaveBalanceDB,
@@ -65,7 +68,7 @@ def get_balance(employee_id: int, year: int):
 
 
 # ============================================================
-# 3️⃣ ✅ LEAVE APPLY (AUTO STARTS WORKFLOW)
+# 3️⃣ ✅ LEAVE APPLY (NOW WITH BALANCE CHECK)
 # ============================================================
 
 @router.post("/apply")
@@ -88,16 +91,26 @@ def apply_leave(req: Dict[str, Any]):
 
     year = date.fromisoformat(start_date).year
 
-    # ✅ Balance Check
+    # ✅ 1. BALANCE EXISTENCE CHECK
     balance = LeaveBalanceDB.get_single_balance(employee_id, leave_type_id, year)
+
     if balance is None:
         raise HTTPException(400, "This leave type is not assigned to this employee for this year")
 
-    # ✅ Overlap Check
+    # ✅ 2. ✅ REMAINING BALANCE CHECK (NEW FIX)
+    remaining = float(balance.get("remaining_quota", 0))
+
+    if total_days > remaining:
+        raise HTTPException(
+            400,
+            f"Insufficient leave balance. Available: {remaining}, Requested: {total_days}"
+        )
+
+    # ✅ 3. OVERLAP CHECK
     if LeaveRequestDB.has_overlapping_approved_leave(employee_id, start_date, end_date):
         raise HTTPException(400, "Overlapping approved leave exists")
 
-    # ✅ Create Leave
+    # ✅ 4. CREATE LEAVE REQUEST
     res = LeaveRequestDB.apply_leave(
         employee_id,
         leave_type_id,
@@ -107,7 +120,7 @@ def apply_leave(req: Dict[str, Any]):
         reason
     )
 
-    # ✅ AUTO START WORKFLOW
+    # ✅ 5. AUTO START WORKFLOW
     wf = workflow_db.get_active_workflow("leave")
     if wf:
         workflow_db.start_workflow(
@@ -137,12 +150,6 @@ def get_pending_requests():
 @router.get("/requests/{employee_id}")
 def get_employee_requests(employee_id: int):
     return LeaveRequestDB.list_requests(employee_id)
-
-
-# ============================================================
-# ❌ OLD MANUAL APPROVAL APIS REMOVED
-# Workflow Now Controls Approval
-# ============================================================
 
 
 # ============================================================
@@ -246,7 +253,7 @@ def leave_admin_stats():
 def admin_approve_leave(leave_id: int):
     updated = LeaveRequestDB.update_leave_status_only(leave_id, "approved")
     return {"message": "Leave approved", "data": updated}
-
+    
 
 @router.post("/admin/reject/{leave_id}")
 def admin_reject_leave(leave_id: int):

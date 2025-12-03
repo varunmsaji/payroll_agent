@@ -42,6 +42,115 @@ class PayrollBulkGenerateRequest(BaseModel):
     month: int
 
 
+class PayrollLockRequest(BaseModel):
+    year: int
+    month: int
+    lock: bool  # True = lock, False = unlock
+
+
+# ============================================================
+# ✅ INTERNAL HELPERS – PAYROLL LOCK
+# ============================================================
+
+def _ensure_payroll_lock_table():
+    """
+    Ensure payroll_lock table exists.
+    Minimal, safe, idempotent.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS payroll_lock (
+            id SERIAL PRIMARY KEY,
+            year INT NOT NULL,
+            month INT NOT NULL,
+            is_locked BOOLEAN NOT NULL DEFAULT FALSE,
+            locked_at TIMESTAMP,
+            UNIQUE (year, month)
+        );
+    """)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def _is_period_locked(year: int, month: int) -> bool:
+    _ensure_payroll_lock_table()
+
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute("""
+        SELECT is_locked
+        FROM payroll_lock
+        WHERE year = %s AND month = %s;
+    """, (year, month))
+
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not row:
+        return False
+
+    return bool(row["is_locked"])
+
+
+def _set_period_lock(year: int, month: int, lock: bool):
+    _ensure_payroll_lock_table()
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    if lock:
+        cur.execute("""
+            INSERT INTO payroll_lock (year, month, is_locked, locked_at)
+            VALUES (%s, %s, TRUE, NOW())
+            ON CONFLICT (year, month)
+            DO UPDATE SET is_locked = TRUE, locked_at = NOW();
+        """, (year, month))
+    else:
+        cur.execute("""
+            INSERT INTO payroll_lock (year, month, is_locked, locked_at)
+            VALUES (%s, %s, FALSE, NULL)
+            ON CONFLICT (year, month)
+            DO UPDATE SET is_locked = FALSE, locked_at = NULL;
+        """, (year, month))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def _get_period_lock_status(year: int, month: int):
+    _ensure_payroll_lock_table()
+
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute("""
+        SELECT year, month, is_locked, locked_at
+        FROM payroll_lock
+        WHERE year = %s AND month = %s;
+    """, (year, month))
+
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not row:
+        return {
+            "year": year,
+            "month": month,
+            "is_locked": False,
+            "locked_at": None
+        }
+
+    return row
+
+
 # ============================================================
 # ✅ 0️⃣ GET ACTIVE PAYROLL POLICY ✅✅✅
 # ============================================================
@@ -65,11 +174,81 @@ def update_policy(payload: PayrollPolicyUpdate):
 
 
 # ============================================================
+# ✅ 🔹 NEW: ACTIVE EMPLOYEES LIST FOR PAYROLL UI
+# ============================================================
+
+@router.get("/employees/active")
+def get_active_employees_for_payroll():
+    """
+    Returns a minimal list of active employees for dropdowns / selection in UI.
+    """
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute("""
+        SELECT 
+            employee_id,
+            first_name,
+            last_name,
+            designation,
+            status
+        FROM employees
+        WHERE status = 'active'
+        ORDER BY first_name, last_name;
+    """)
+
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    return rows
+
+
+# ============================================================
+# ✅ 🔹 NEW: PAYROLL LOCK / UNLOCK (ADMIN)
+# ============================================================
+
+@router.post("/lock")
+def lock_or_unlock_payroll(payload: PayrollLockRequest):
+    """
+    Lock or unlock payroll for a specific year & month.
+    When locked:
+      - /generate
+      - /generate-bulk
+      - /regenerate
+    will all refuse to modify that period.
+    """
+    _set_period_lock(payload.year, payload.month, payload.lock)
+
+    return {
+        "year": payload.year,
+        "month": payload.month,
+        "locked": payload.lock
+    }
+
+
+@router.get("/lock/status")
+def get_lock_status(year: int = Query(...), month: int = Query(...)):
+    """
+    Get lock status for a specific payroll period.
+    """
+    status = _get_period_lock_status(year, month)
+    return status
+
+
+# ============================================================
 # ✅ 1️⃣ GENERATE PAYROLL FOR ONE EMPLOYEE
 # ============================================================
 
 @router.post("/generate")
 def generate_payroll(payload: PayrollGenerateRequest):
+    # 🔒 Block if period is locked
+    if _is_period_locked(payload.year, payload.month):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Payroll is locked for {payload.year}-{payload.month}. Unlock to regenerate."
+        )
+
     try:
         return PayrollService.generate_for_employee(
             employee_id=payload.employee_id,
@@ -86,6 +265,13 @@ def generate_payroll(payload: PayrollGenerateRequest):
 
 @router.post("/generate-bulk")
 def generate_bulk_payroll(payload: PayrollBulkGenerateRequest):
+    # 🔒 Block if period is locked
+    if _is_period_locked(payload.year, payload.month):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Payroll is locked for {payload.year}-{payload.month}. Unlock to regenerate."
+        )
+
     conn = get_connection()
     cur = conn.cursor()
 
@@ -138,7 +324,11 @@ def get_month_payroll(year: int = Query(...), month: int = Query(...)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     cur.execute("""
-        SELECT p.*, e.first_name, e.last_name, e.designation
+        SELECT 
+            p.*, 
+            e.first_name, 
+            e.last_name, 
+            e.designation
         FROM payroll p
         JOIN employees e ON e.employee_id = p.employee_id
         WHERE p.year = %s AND p.month = %s
@@ -174,6 +364,13 @@ def get_employee_payroll(
 
 @router.post("/regenerate")
 def regenerate_payroll(payload: PayrollGenerateRequest):
+    # 🔒 Block if period is locked
+    if _is_period_locked(payload.year, payload.month):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Payroll is locked for {payload.year}-{payload.month}. Unlock to regenerate."
+        )
+
     try:
         return PayrollService.generate_for_employee(
             employee_id=payload.employee_id,
