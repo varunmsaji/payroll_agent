@@ -214,9 +214,29 @@ class AttendanceService:
         net_hours = round(work_sec / 3600, 2)
         break_minutes = int(break_sec / 60)
 
+        # ✅ Late & Early Calculation
         late_minutes, is_late = cls._compute_late(shift, dt, check_in)
         early_exit_minutes, is_early = cls._compute_early_checkout(shift, dt, check_out)
-        overtime_minutes, is_overtime = cls._compute_overtime(net_hours, required_hours, policy)
+
+        # ✅ Build official SHIFT END datetime
+        if shift:
+            end = shift["end_time"]
+            is_night = shift.get("is_night_shift", False)
+
+            if is_night or end <= shift["start_time"]:
+                shift_end_dt = datetime.combine(dt + timedelta(days=1), end)
+            else:
+                shift_end_dt = datetime.combine(dt, end)
+        else:
+            shift_end_dt = None
+
+        # ✅ ✅ CORRECT OVERTIME LOGIC (NO LATE RECOVERY)
+        overtime_minutes, is_overtime = cls._compute_overtime(
+            check_out,
+            shift_end_dt,
+            late_minutes,
+            policy
+        )
 
         status = cls._decide_status(net_hours, required_hours, is_weekend, is_holiday, has_leave)
 
@@ -244,6 +264,7 @@ class AttendanceService:
         }
 
         return AttendanceDB.upsert_full_attendance(data)
+
 
     # --------------------------------------------------
     # HELPERS
@@ -377,21 +398,41 @@ class AttendanceService:
         return (diff, True) if diff > cls.EARLY_GRACE_MINUTES else (0, False)
 
     @classmethod
-    def _compute_overtime(cls, net_hours, required_hours, policy: Dict[str, Any]):
+    def _compute_overtime(
+        cls,
+        actual_out: datetime | None,
+        shift_end: datetime | None,
+        late_minutes: int,
+        policy: Dict[str, Any],
+    ):
         """
-        We keep overtime_minutes calculation here, but whether we PAY for it
-        is controlled later by PayrollPolicy (already in your payroll_service).
+        ✅ Prevents late recovery from being counted as overtime
+        ✅ Only counts work done AFTER shift end
         """
-        # night_shift_enabled, overtime_enabled are available in policy
+
         overtime_enabled = bool(policy.get("overtime_enabled", True))
 
         if not overtime_enabled:
             return 0, False
 
-        if net_hours > required_hours:
-            mins = int((net_hours - required_hours) * 60)
-            return mins, True
-        return 0, False
+        if not actual_out or not shift_end:
+            return 0, False
+
+        # ✅ Real overtime only if work is done AFTER official shift end
+        if actual_out <= shift_end:
+            return 0, False
+
+        raw_overtime_minutes = int((actual_out - shift_end).total_seconds() / 60)
+
+        # ✅ Subtract recovered late time
+        adjusted_overtime = raw_overtime_minutes - late_minutes
+
+        # ✅ Never allow negative overtime
+        if adjusted_overtime <= 0:
+            return 0, False
+
+        return adjusted_overtime, True
+
 
     @classmethod
     def _decide_status(cls, net_hours, required_hours, is_weekend, is_holiday, has_leave):

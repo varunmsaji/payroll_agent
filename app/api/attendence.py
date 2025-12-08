@@ -264,3 +264,71 @@ def override_attendance(employee_id: int, dt: date, payload: AttendanceOverride)
     finally:
         cur.close()
         conn.close()
+
+
+@router.get("/employees")
+def attendance_employee_list():
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute("""
+        SELECT 
+            e.employee_id,
+            e.first_name,
+            e.last_name,
+            e.department,
+            s.shift_name
+        FROM employees e
+        LEFT JOIN employee_shifts es ON es.employee_id = e.employee_id
+        LEFT JOIN shifts s ON s.shift_id = es.shift_id
+        ORDER BY e.first_name;
+    """)
+
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+
+@router.get("/calendar/{employee_id}")
+def calendar_attendance(
+    employee_id: int,
+    start_date: date,
+    end_date: date
+):
+    return AttendanceDB.get_attendance_range(
+        employee_id, start_date, end_date
+    )
+
+
+
+@router.get("/locked/{employee_id}")
+def locked_attendance(employee_id: int):
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute("""
+        SELECT *
+        FROM attendance
+        WHERE employee_id = %s
+          AND is_payroll_locked = TRUE
+        ORDER BY date DESC;
+    """, (employee_id,))
+
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+@router.post("/recalculate/{employee_id}")
+def recalc_attendance(employee_id: int, dt: date):
+    AttendanceService.recalculate_for_date(employee_id, dt)
+    return {"message": "Attendance recalculated"}
+
+
+@router.get("/is-locked/{employee_id}")
+def is_locked(employee_id: int, dt: date):
+    data = AttendanceDB.get_by_employee_and_date(employee_id, dt)
+    return {
+        "is_locked": bool(data and data.get("is_payroll_locked", False))
+    }
