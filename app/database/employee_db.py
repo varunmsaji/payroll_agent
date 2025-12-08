@@ -147,7 +147,7 @@ class EmployeeDB:
     def get_hr_user():
         conn = get_connection()
         cur = conn.cursor()
-        cur.execute("SELECT employee_id FROM employees WHERE designation='hr' LIMIT 1")
+        cur.execute("SELECT employee_id FROM employees WHERE designation='HR' LIMIT 1")
         row = cur.fetchone()
         conn.close()
         return row[0] if row else None

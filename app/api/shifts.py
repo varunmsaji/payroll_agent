@@ -11,7 +11,6 @@ from app.database.employee_shift_db import EmployeeShiftDB
 
 router = APIRouter(prefix="/hrms/shifts", tags=["Shifts"])
 
-
 # ============================================================
 # 🧱 SCHEMAS
 # ============================================================
@@ -39,7 +38,6 @@ class ShiftAssignRequest(BaseModel):
     shift_id: int
     effective_from: date
 
-
 # ============================================================
 # 1️⃣ LIST SHIFTS (ADMIN TABLE)
 # ============================================================
@@ -57,8 +55,8 @@ def list_shifts(
         cur.execute("SELECT COUNT(*) AS count FROM shifts;")
     else:
         cur.execute("SELECT COUNT(*) AS count FROM shifts WHERE is_active = true;")
+    
     total = cur.fetchone()["count"]
-
     offset = (page - 1) * limit
 
     if include_inactive:
@@ -81,9 +79,83 @@ def list_shifts(
 
     return {"page": page, "limit": limit, "total": total, "data": rows}
 
+# ============================================================
+# ✅ ✅ ✅ 2️⃣ SHIFT ROSTER (✅ MUST BE BEFORE /{shift_id})
+# ============================================================
+
+@router.get("/roster")
+def roster(date_: date = Query(default=date.today())):
+
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute("""
+        SELECT
+            e.employee_id,
+            e.first_name,
+            e.last_name,
+            e.email,
+            e.department,
+            e.designation,
+            s.shift_id,
+            s.shift_name,
+            s.start_time,
+            s.end_time,
+            es.effective_from,
+            es.effective_to
+        FROM employee_shifts es
+        JOIN employees e ON e.employee_id = es.employee_id
+        JOIN shifts s ON s.shift_id = es.shift_id
+        WHERE es.effective_from <= %s
+          AND (es.effective_to IS NULL OR es.effective_to >= %s)
+        ORDER BY s.shift_name, e.first_name;
+    """, (date_, date_))
+
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+
+
+
+
 
 # ============================================================
-# 2️⃣ CREATE SHIFT
+# ✅ GET ALL EMPLOYEES FOR A SHIFT (ACTIVE ASSIGNMENT)
+# ============================================================
+
+@router.get("/{shift_id}/employees")
+def get_shift_employees(shift_id: int):
+
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute("""
+        SELECT
+            e.employee_id,
+            e.first_name,
+            e.last_name,
+            e.email,
+            e.department,
+            e.designation,
+            es.effective_from,
+            es.effective_to
+        FROM employee_shifts es
+        JOIN employees e ON e.employee_id = es.employee_id
+        WHERE es.shift_id = %s
+          AND es.effective_to IS NULL
+        ORDER BY e.first_name;
+    """, (shift_id,))
+
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    return rows
+
+# ============================================================
+# 3️⃣ CREATE SHIFT
 # ============================================================
 
 @router.post("/")
@@ -93,9 +165,8 @@ def create_shift(payload: ShiftCreate):
     except Exception as e:
         raise HTTPException(400, str(e))
 
-
 # ============================================================
-# 3️⃣ GET SINGLE SHIFT
+# 4️⃣ GET SINGLE SHIFT  ✅ SAFE NOW
 # ============================================================
 
 @router.get("/{shift_id}")
@@ -105,9 +176,8 @@ def get_shift(shift_id: int):
         raise HTTPException(404, "Shift not found")
     return shift
 
-
 # ============================================================
-# 4️⃣ UPDATE SHIFT
+# 5️⃣ UPDATE SHIFT
 # ============================================================
 
 @router.put("/{shift_id}")
@@ -117,9 +187,8 @@ def update_shift(shift_id: int, payload: ShiftUpdate):
 
     return ShiftDB.update_shift(shift_id, payload.dict())
 
-
 # ============================================================
-# 5️⃣ SOFT DELETE SHIFT
+# 6️⃣ SOFT DELETE SHIFT
 # ============================================================
 
 @router.delete("/{shift_id}")
@@ -129,9 +198,8 @@ def delete_shift(shift_id: int):
         raise HTTPException(404, "Shift not found")
     return {"message": "Shift archived successfully"}
 
-
 # ============================================================
-# ✅ 6️⃣ ASSIGN SHIFT TO EMPLOYEE (PRODUCTION SAFE)
+# ✅ 7️⃣ ASSIGN SHIFT TO EMPLOYEE (PRODUCTION SAFE)
 # ============================================================
 
 @router.post("/assign")
@@ -176,9 +244,8 @@ def assign_shift(req: ShiftAssignRequest):
         cur.close()
         conn.close()
 
-
 # ============================================================
-# ✅ 7️⃣ UNASSIGN SHIFT (SAFE)
+# ✅ 8️⃣ UNASSIGN SHIFT (SAFE)
 # ============================================================
 
 @router.delete("/unassign/{employee_id}")
@@ -204,49 +271,10 @@ def unassign_shift(employee_id: int):
 
     return {"message": "Shift unassigned successfully"}
 
-
 # ============================================================
-# ✅ 8️⃣ SHIFT HISTORY
+# ✅ 9️⃣ SHIFT HISTORY
 # ============================================================
 
 @router.get("/history/{employee_id}")
 def shift_history(employee_id: int):
     return EmployeeShiftDB.get_shift_history(employee_id)
-
-
-# ============================================================
-# ✅ 9️⃣ SHIFT ROSTER (DATE-WISE)
-# ============================================================
-
-@router.get("/roster")
-def roster(date_: date = Query(default=date.today())):
-
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    cur.execute("""
-        SELECT
-            e.employee_id,
-            e.first_name,
-            e.last_name,
-            e.email,
-            e.department,
-            e.designation,
-            s.shift_id,
-            s.shift_name,
-            s.start_time,
-            s.end_time,
-            es.effective_from,
-            es.effective_to
-        FROM employee_shifts es
-        JOIN employees e ON e.employee_id = es.employee_id
-        JOIN shifts s ON s.shift_id = es.shift_id
-        WHERE es.effective_from <= %s
-          AND (es.effective_to IS NULL OR es.effective_to >= %s)
-        ORDER BY s.shift_name, e.first_name;
-    """, (date_, date_))
-
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    return rows
