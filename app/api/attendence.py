@@ -257,6 +257,8 @@ def override_attendance(employee_id: int, dt: date, payload: AttendanceOverride)
             "updated": row
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))

@@ -9,6 +9,7 @@ from app.api.employee_detail import router as employee_detail_router
 from app.api.attendence import router as attendence_router
 from app.api.payroll import router as payroll_router
 from app.api.settings import router as settings_router
+from app.api.attendence_dashboard import router as attendence_dashboard_router
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -22,7 +23,7 @@ app.include_router(dashboard_router)
 app.include_router(shifts_router)
 app.include_router(leave_router)
 app.include_router(workflow_router)
-app.include_router(dashboard_router)
+app.include_router(attendence_dashboard_router)
 app.include_router(employee_detail_router)
 app.include_router(attendence_router)
 app.include_router(payroll_router)

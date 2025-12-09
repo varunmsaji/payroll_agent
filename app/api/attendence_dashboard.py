@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from datetime import date
-from app.database.attendence import  AttendanceDB, EmployeeShiftDB
+from app.database.attendence import AttendanceDB
+from app.database.employee_shift_db import EmployeeShiftDB
 from app.database.employee_db import EmployeeDB
 from app.database.shifts_db import ShiftDB
 router = APIRouter(prefix="/hrms", tags=["Dashboard Stats"])
