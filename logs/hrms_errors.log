@@ -1,0 +1,6 @@
+2025-12-09 17:51:09 - hrms.api - [31mERROR[0m - logger.py:194 - <module>() - This is an error
+2025-12-09 17:51:09 - hrms.api - [31mERROR[0m - logger.py:199 - <module>() - Exception occurred
+Traceback (most recent call last):
+  File "/media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/app/utils/logger.py", line 197, in <module>
+    1 / 0
+ZeroDivisionError: division by zero
