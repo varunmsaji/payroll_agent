@@ -9,25 +9,27 @@ COLLECTION_ID = "b2f6dbb6-eca2-4472-a858-ac9cc67d4e34"
 
 
 # ---------- Image validation settings ----------
-ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
+ALLOWED_TYPES = {
+    "image/jpeg",   # covers most .jpg and .jpeg
+    "image/jpg",    # some clients still send this
+    "image/png",
+    "image/webp",
+}
+
 MAX_SIZE_MB = 5
 MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024
 
-
 async def validate_image(upload: UploadFile):
-    """
-    Validate MIME type + file size.
-    Returns the image bytes if valid.
-    """
-    # 1️⃣ Validate format
+    print("DEBUG => content_type:", upload.content_type)
+
     if upload.content_type not in ALLOWED_TYPES:
         raise HTTPException(
             400,
             f"Unsupported file type. Allowed: {', '.join(ALLOWED_TYPES)}"
         )
 
-    # 2️⃣ Validate size (read once!)
     data = await upload.read()
+    print("DEBUG => size:", len(data))
 
     if len(data) > MAX_SIZE_BYTES:
         raise HTTPException(

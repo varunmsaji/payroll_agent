@@ -1,10 +1,7 @@
 import requests
 
-BASE_URL = "http://localhost:8001"
-
-IMAGE_PATH = "test.jpg"
-
-# 🔹 Employee ID to register
+BASE_URL = "http://localhost:8000"
+IMAGE_PATH = "varun_image.jpeg"
 EMPLOYEE_ID = "EMP001"
 
 
@@ -12,11 +9,9 @@ def register_face():
     url = f"{BASE_URL}/faces/register"
 
     files = {
-        "image": open(IMAGE_PATH, "rb")
+        "image": ("varun.jpg", open(IMAGE_PATH, "rb"), "image/jpeg")
     }
-    data = {
-        "employee_id": EMPLOYEE_ID
-    }
+    data = {"employee_id": EMPLOYEE_ID}
 
     resp = requests.post(url, files=files, data=data)
 
@@ -29,7 +24,7 @@ def recognize_face():
     url = f"{BASE_URL}/faces/recognize"
 
     files = {
-        "image": open(IMAGE_PATH, "rb")
+        "image": ("varun.jpg", open(IMAGE_PATH, "rb"), "image/jpeg")
     }
 
     resp = requests.post(url, files=files)
@@ -40,5 +35,5 @@ def recognize_face():
 
 
 if __name__ == "__main__":
-    register_face()
+    # register_face()
     recognize_face()
