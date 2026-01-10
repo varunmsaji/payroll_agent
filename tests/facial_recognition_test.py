@@ -1,39 +1,39 @@
 import requests
 
-BASE_URL = "http://localhost:8000"
-IMAGE_PATH = "varun_image.jpeg"
-EMPLOYEE_ID = "EMP001"
+BASE_URL = "http://localhost:8000"   # FastAPI backend
+IMAGE_PATH = "test.jpg"              # SAME image used for registration
+
+LATITUDE = 12.9716
+LONGITUDE = 77.5946
 
 
-def register_face():
-    url = f"{BASE_URL}/faces/register"
-
-    files = {
-        "image": ("varun.jpg", open(IMAGE_PATH, "rb"), "image/jpeg")
-    }
-    data = {"employee_id": EMPLOYEE_ID}
-
-    resp = requests.post(url, files=files, data=data)
-
-    print("\n=== REGISTER RESPONSE ===")
-    print(resp.status_code)
-    print(resp.json())
-
-
-def recognize_face():
-    url = f"{BASE_URL}/faces/recognize"
+def test_face_attendance():
+    url = f"{BASE_URL}/faces/attendance"
 
     files = {
-        "image": ("varun.jpg", open(IMAGE_PATH, "rb"), "image/jpeg")
+        "image": (
+            "test.jpg",
+            open(IMAGE_PATH, "rb"),
+            "image/jpeg"
+        )
     }
 
-    resp = requests.post(url, files=files)
+    data = {
+        "latitude": str(LATITUDE),
+        "longitude": str(LONGITUDE),
+    }
 
-    print("\n=== RECOGNIZE RESPONSE ===")
-    print(resp.status_code)
-    print(resp.json())
+    response = requests.post(url, files=files, data=data)
+
+    print("STATUS CODE:", response.status_code)
+
+    try:
+        print("RESPONSE JSON:")
+        print(response.json())
+    except Exception:
+        print("RAW RESPONSE:")
+        print(response.text)
 
 
 if __name__ == "__main__":
-    # register_face()
-    recognize_face()
+    test_face_attendance()

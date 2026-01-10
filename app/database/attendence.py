@@ -102,6 +102,23 @@ class AttendanceDB:
         cur.close()
         conn.close()
         return row
+    @staticmethod
+    def get_by_employee_and_date(employee_id: int, dt: date):
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            SELECT *
+        FROM attendance
+        WHERE employee_id = %s
+          AND date = %s
+        LIMIT 1;
+    """, (employee_id, dt))
+
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        return row
 
 
     @staticmethod

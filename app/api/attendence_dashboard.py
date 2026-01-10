@@ -13,25 +13,22 @@ router = APIRouter(prefix="/hrms", tags=["Dashboard Stats"])
 @router.get("/dashboard/today-stats")
 def today_stats():
     today = date.today()
-
     employees = EmployeeDB.get_all()
     total_employees = len(employees)
 
-    # Get today's attendance
     today_att = []
+
     for emp in employees:
-        att = AttendanceDB.get_attendance(emp["employee_id"])
-        if att and att[0]["date"] == today:
-            today_att.append(att[0])
+        att = AttendanceDB.get_by_employee_and_date(emp["employee_id"], today)
+        if att:
+            today_att.append(att)
 
     present_today = len(today_att)
     absent_today = total_employees - present_today
-
     late_today = sum(1 for a in today_att if a["late_minutes"] > 0)
     overtime_today = sum(a["overtime_minutes"] for a in today_att) / 60
     total_hours_today = sum(a["total_hours"] for a in today_att)
 
-    # Shift-wise counts
     shift_map = {}
     for a in today_att:
         shift = EmployeeShiftDB.get_current_shift(a["employee_id"])
@@ -48,7 +45,7 @@ def today_stats():
         "late_today": late_today,
         "overtime_today": round(overtime_today, 2),
         "total_hours_today": round(total_hours_today, 2),
-        "shift_wise": shift_list
+        "shift_wise": shift_list,
     }
 
 
@@ -62,15 +59,10 @@ def today_attendance_table():
     final_list = []
 
     for emp in employees:
-        att_list = AttendanceDB.get_attendance(emp["employee_id"])
-
-        # No attendance today
-        if not att_list or att_list[0]["date"] != today:
+        att = AttendanceDB.get_by_employee_and_date(emp["employee_id"], today)
+        if not att:
             continue
 
-        att = att_list[0]
-
-        # Get shift
         shift = EmployeeShiftDB.get_current_shift(emp["employee_id"])
         shift_name = shift["shift_name"] if shift else None
 
@@ -82,7 +74,7 @@ def today_attendance_table():
             "check_out": att["check_out"],
             "total_hours": att["total_hours"],
             "late_minutes": att["late_minutes"],
-            "overtime_minutes": att["overtime_minutes"]
+            "overtime_minutes": att["overtime_minutes"],
         })
 
     return final_list
