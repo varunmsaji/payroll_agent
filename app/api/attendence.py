@@ -5,6 +5,9 @@ from pydantic import BaseModel
 from datetime import date
 from typing import Optional, Dict, List
 from psycopg2.extras import RealDictCursor
+from datetime import datetime
+from fastapi import Body
+
 
 from app.services.attendence_services import AttendanceService
 from app.database.connection import get_connection
@@ -333,4 +336,65 @@ def is_locked(employee_id: int, dt: date):
     data = AttendanceDB.get_by_employee_and_date(employee_id, dt)
     return {
         "is_locked": bool(data and data.get("is_payroll_locked", False))
+    }
+
+
+
+@router.post("/biometric-attendance")
+async def biometric_attendance(
+    employee_id: int = Body(...),
+    timestamp: Optional[datetime] = Body(None),
+    latitude: Optional[float] = Body(None),
+    longitude: Optional[float] = Body(None),
+):
+    """
+    Biometric machine sends punches here.
+    We auto-decide action: check-in / break / check-out.
+    """
+
+    ts = timestamp or datetime.now()
+
+    meta = {
+        "lat": latitude,
+        "lng": longitude,
+        "biometric_ts": ts.isoformat()
+    }
+
+    # 1️⃣ Fetch today's events
+    today = ts.date()
+    events = AttendanceEventDB.get_events_for_window(
+        employee_id,
+        datetime(today.year, today.month, today.day),
+        ts,
+    )
+
+    try:
+        if not events:
+            action = "check_in"
+            result = AttendanceService.check_in(employee_id, "biometric", meta)
+
+        else:
+            last = events[-1]["event_type"]
+
+            if last == "check_in":
+                action = "break_start"
+                result = AttendanceService.break_start(employee_id, "biometric", meta)
+
+            elif last == "break_start":
+                action = "break_end"
+                result = AttendanceService.break_end(employee_id, "biometric", meta)
+
+            else:
+                action = "check_out"
+                result = AttendanceService.check_out(employee_id, "biometric", meta)
+
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+    return {
+        "employee_id": employee_id,
+        "action": action,
+        "timestamp": ts,
+        "location": meta,
+        "attendance": result,
     }

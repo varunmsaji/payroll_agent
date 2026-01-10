@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, date, time, timedelta
-from typing import Optional, Dict, Any
+from typing import Dict, Any, List
 
 from app.database.attendence import (
     AttendanceDB,
@@ -10,46 +11,70 @@ from app.database.attendence import (
     ShiftDB,
 )
 from app.database.connection import get_connection
+from app.database.leave import LeaveDB
+from app.services.attendance_engine import AttendanceEngine
 
 
-# =====================================
-# ATTENDANCE POLICY (DYNAMIC + HISTORY)
-# =====================================
+# =========================================================
+# BUSINESS EXCEPTIONS
+# =========================================================
+class AttendanceError(Exception):
+    pass
+
+
+class AlreadyCheckedIn(AttendanceError):
+    pass
+
+
+class NoActiveCheckIn(AttendanceError):
+    pass
+
+
+class BreakAlreadyRunning(AttendanceError):
+    pass
+
+
+class NoActiveBreak(AttendanceError):
+    pass
+
+
+class AttendanceLocked(AttendanceError):
+    pass
+
+
+# =========================================================
+# POLICY MODEL
+# =========================================================
+@dataclass
+class AttendancePolicy:
+    late_grace_minutes: int
+    early_exit_grace_minutes: int
+    early_checkin_grace_minutes: int
+    full_day_fraction: float
+    half_day_fraction: float
+    overtime_enabled: bool
+
+
+# =========================================================
+# POLICY LOADER
+# =========================================================
 class AttendancePolicyDB:
-    """
-    Reads attendance policy from attendance_policies table.
-
-    ✅ Supports history using created_at:
-       - For a given attendance date (dt),
-         we pick the latest policy where created_at <= end of that day.
-    ✅ If table is missing or empty, we fall back to safe defaults.
-    """
-
-    DEFAULT_POLICY = {
-        "late_grace_minutes": 10,
-        "early_exit_grace_minutes": 10,
-        "full_day_fraction": 0.75,
-        "half_day_fraction": 0.5,
-        "night_shift_enabled": True,
-        "overtime_enabled": True,
-    }
+    DEFAULT_POLICY = AttendancePolicy(
+        late_grace_minutes=10,
+        early_exit_grace_minutes=10,
+        early_checkin_grace_minutes=0,
+        full_day_fraction=0.75,
+        half_day_fraction=0.5,
+        overtime_enabled=True,
+    )
 
     @staticmethod
-    def get_policy_for_date(dt: date) -> Dict[str, Any]:
-        """
-        Returns the policy that was active for the given calendar date.
-
-        Logic:
-        - Use attendance_policies.created_at as the "effective from" timestamp.
-        - For a given dt, pick the LAST row where created_at <= dt 23:59:59.
-        - If nothing matches, fall back to DEFAULT_POLICY.
-        """
+    def get_policy_for_date(dt: date) -> AttendancePolicy:
         conn = None
         try:
             conn = get_connection()
             cur = conn.cursor()
 
-            # We look for the latest policy created on or before the end of that date.
             end_of_day = datetime.combine(dt, time(23, 59, 59))
 
             cur.execute(
@@ -57,9 +82,9 @@ class AttendancePolicyDB:
                 SELECT
                     late_grace_minutes,
                     early_exit_grace_minutes,
+                    early_checkin_grace_minutes,
                     full_day_fraction,
                     half_day_fraction,
-                    night_shift_enabled,
                     overtime_enabled
                 FROM attendance_policies
                 WHERE created_at <= %s
@@ -68,25 +93,23 @@ class AttendancePolicyDB:
                 """,
                 (end_of_day,),
             )
+
             row = cur.fetchone()
             cur.close()
 
             if not row:
-                # No policy yet for that date → default policy
                 return AttendancePolicyDB.DEFAULT_POLICY
 
-            # row is a tuple, map accordingly
-            return {
-                "late_grace_minutes": int(row[0]),
-                "early_exit_grace_minutes": int(row[1]),
-                "full_day_fraction": float(row[2]),
-                "half_day_fraction": float(row[3]),
-                "night_shift_enabled": bool(row[4]),
-                "overtime_enabled": bool(row[5]),
-            }
+            return AttendancePolicy(
+                late_grace_minutes=row[0],
+                early_exit_grace_minutes=row[1],
+                early_checkin_grace_minutes=row[2],
+                full_day_fraction=row[3],
+                half_day_fraction=row[4],
+                overtime_enabled=row[5],
+            )
 
         except Exception:
-            # If table doesn't exist or any DB error → fallback to defaults
             return AttendancePolicyDB.DEFAULT_POLICY
 
         finally:
@@ -94,104 +117,118 @@ class AttendancePolicyDB:
                 conn.close()
 
 
-# =====================================
-# LEAVE CHECK HELPER
-# =====================================
-class LeaveDB:
-    @staticmethod
-    def has_approved_leave(employee_id: int, dt: date) -> bool:
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT 1
-            FROM leave_requests
-            WHERE employee_id = %s
-              AND status = 'approved'
-              AND start_date <= %s
-              AND end_date >= %s
-            LIMIT 1;
-            """,
-            (employee_id, dt, dt),
-        )
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
-        return row is not None
-
-
-# =====================================
-# ATTENDANCE SERVICE (FINAL PAYROLL SYNC)
-# =====================================
+# =========================================================
+# ATTENDANCE SERVICE
+# =========================================================
 class AttendanceService:
-    """
-    🔥 NOW DYNAMIC:
-    Attendance behaviour is controlled by DB policy (attendance_policies),
-    with history support via created_at.
 
-    These attributes are the "currently loaded" policy for the date
-    being calculated. They are updated inside recalculate_for_date().
-    """
-
-    # Default fallbacks (used if DB table is missing/empty)
-    LATE_GRACE_MINUTES = 10
-    EARLY_GRACE_MINUTES = 10
-    FULL_DAY_FRACTION = 0.75
-    HALF_DAY_FRACTION = 0.5
-
-    # --------------------------------------------------
-    # EMPLOYEE ACTIONS
-    # --------------------------------------------------
+    # =====================================================
+    # PUBLIC ACTIONS
+    # =====================================================
     @classmethod
-    def check_in(cls, employee_id: int, source: str = "manual", meta: Dict[str, Any] | None = None):
-        cls._ensure_no_open_checkin(employee_id)
+    def check_in(cls, employee_id: int, source="manual", meta=None):
+        today = datetime.now().date()
+        cls._ensure_no_open_checkin(employee_id, today)
 
-        event = AttendanceEventDB.add_event(employee_id, "check_in", source=source, meta=meta)
-        cls.recalculate_for_date(employee_id, event["event_time"].date())
+        event = AttendanceEventDB.add_event(employee_id, "check_in", source, meta)
+        cls.recalculate_for_date(employee_id, today)
         return event
 
     @classmethod
-    def check_out(cls, employee_id: int, source: str = "manual", meta: Dict[str, Any] | None = None):
-        cls._ensure_has_open_checkin(employee_id)
+    def check_out(cls, employee_id: int, source="manual", meta=None):
+        today = datetime.now().date()
+        cls._ensure_has_open_checkin(employee_id, today)
 
-        event = AttendanceEventDB.add_event(employee_id, "check_out", source=source, meta=meta)
-        cls.recalculate_for_date(employee_id, event["event_time"].date())
+        event = AttendanceEventDB.add_event(employee_id, "check_out", source, meta)
+        cls.recalculate_for_date(employee_id, today)
         return event
 
     @classmethod
     def break_start(cls, employee_id: int, source="manual", meta=None):
-        cls._ensure_has_open_checkin(employee_id)
-        cls._ensure_no_open_break(employee_id)
+        today = datetime.now().date()
+        cls._ensure_has_open_checkin(employee_id, today)
+        cls._ensure_no_open_break(employee_id, today)
 
-        event = AttendanceEventDB.add_event(employee_id, "break_start", source=source, meta=meta)
-        cls.recalculate_for_date(employee_id, event["event_time"].date())
+        event = AttendanceEventDB.add_event(employee_id, "break_start", source, meta)
+        cls.recalculate_for_date(employee_id, today)
         return event
 
     @classmethod
     def break_end(cls, employee_id: int, source="manual", meta=None):
-        cls._ensure_has_open_break(employee_id)
+        today = datetime.now().date()
+        cls._ensure_has_open_break(employee_id, today)
 
-        event = AttendanceEventDB.add_event(employee_id, "break_end", source=source, meta=meta)
-        cls.recalculate_for_date(employee_id, event["event_time"].date())
+        event = AttendanceEventDB.add_event(employee_id, "break_end", source, meta)
+        cls.recalculate_for_date(employee_id, today)
         return event
 
-    # --------------------------------------------------
-    # CORE CALCULATION
-    # --------------------------------------------------
+    # =====================================================
+    # SESSION-AWARE VALIDATION HELPERS
+    # =====================================================
+    @classmethod
+    def _get_session_events(cls, employee_id: int, dt: date):
+        shift = ShiftDB.get_employee_shift(employee_id, dt)
+        window_start, window_end, _, _, _ = cls._get_shift_window(shift, dt)
+
+        policy = AttendancePolicyDB.get_policy_for_date(dt)
+        allowed_start = window_start - timedelta(
+            minutes=policy.early_checkin_grace_minutes
+        )
+
+        return AttendanceEventDB.get_events_for_window(
+            employee_id,
+            allowed_start,
+            window_end,
+        )
+
+    @staticmethod
+    def _derive_state(events: List[Dict[str, Any]]):
+        state = {"checked_in": False, "on_break": False}
+
+        for ev in events:
+            if ev["event_type"] == "check_in":
+                state["checked_in"] = True
+            elif ev["event_type"] == "check_out":
+                state["checked_in"] = False
+                state["on_break"] = False
+            elif ev["event_type"] == "break_start":
+                state["on_break"] = True
+            elif ev["event_type"] == "break_end":
+                state["on_break"] = False
+
+        return state
+
+    @classmethod
+    def _ensure_no_open_checkin(cls, employee_id: int, dt: date):
+        if cls._derive_state(cls._get_session_events(employee_id, dt))["checked_in"]:
+            raise AlreadyCheckedIn("Employee already checked in for this session.")
+
+    @classmethod
+    def _ensure_has_open_checkin(cls, employee_id: int, dt: date):
+        if not cls._derive_state(cls._get_session_events(employee_id, dt))["checked_in"]:
+            raise NoActiveCheckIn("No active check-in for this session.")
+
+    @classmethod
+    def _ensure_no_open_break(cls, employee_id: int, dt: date):
+        if cls._derive_state(cls._get_session_events(employee_id, dt))["on_break"]:
+            raise BreakAlreadyRunning("Break already running.")
+
+    @classmethod
+    def _ensure_has_open_break(cls, employee_id: int, dt: date):
+        if not cls._derive_state(cls._get_session_events(employee_id, dt))["on_break"]:
+            raise NoActiveBreak("No active break to end.")
+
+    # =====================================================
+    # PAYROLL RECALCULATION (CRITICAL FIX APPLIED)
+    # =====================================================
     @classmethod
     def recalculate_for_date(cls, employee_id: int, dt: date):
-
-        # 0️⃣ LOAD POLICY FOR THAT DATE (DYNAMIC + HISTORY)
         policy = AttendancePolicyDB.get_policy_for_date(dt)
-
-        cls.LATE_GRACE_MINUTES = int(policy["late_grace_minutes"])
-        cls.EARLY_GRACE_MINUTES = int(policy["early_exit_grace_minutes"])
-        cls.FULL_DAY_FRACTION = float(policy["full_day_fraction"])
-        cls.HALF_DAY_FRACTION = float(policy["half_day_fraction"])
+        engine = AttendanceEngine(policy)
 
         existing = AttendanceDB.get_by_employee_and_date(employee_id, dt)
         if existing and existing.get("is_payroll_locked"):
-            raise ValueError("Attendance locked for payroll.")
+            raise AttendanceLocked("Attendance locked for payroll.")
 
         is_weekend = dt.weekday() >= 5
         is_holiday = HolidayDB.is_holiday(dt)
@@ -200,47 +237,74 @@ class AttendanceService:
         shift = ShiftDB.get_employee_shift(employee_id, dt)
         window_start, window_end, required_hours, is_night_shift, shift_id = cls._get_shift_window(shift, dt)
 
-        events = AttendanceEventDB.get_events_for_window(employee_id, window_start, window_end)
+        allowed_start = window_start - timedelta(
+            minutes=policy.early_checkin_grace_minutes
+        )
+
+        events = AttendanceEventDB.get_events_for_window(
+            employee_id,
+            allowed_start,
+            window_end,
+        )
 
         if not events:
-            return cls._handle_no_events(
-                employee_id, dt, shift_id, is_weekend, is_holiday, has_leave, is_night_shift
+            status = (
+                "holiday" if is_holiday
+                else "on_leave" if has_leave
+                else "week_off" if is_weekend
+                else "absent"
             )
 
-        work_sec, break_sec, check_in, check_out = cls._compute_work_and_breaks(events)
+            return AttendanceDB.upsert_full_attendance({
+                "employee_id": employee_id,
+                "shift_id": shift_id,
+                "date": dt,
+                "check_in": None,
+                "check_out": None,
+                "total_hours": 0.0,
+                "net_hours": 0.0,
+                "break_minutes": 0,
+                "overtime_minutes": 0,
+                "late_minutes": 0,
+                "early_exit_minutes": 0,
+                "is_late": False,
+                "is_early_checkout": False,
+                "is_overtime": False,
+                "is_weekend": is_weekend,
+                "is_holiday": is_holiday,
+                "is_night_shift": is_night_shift,
+                "status": status,
+                "is_payroll_locked": False,
+                "locked_at": None,
+            })
 
-        total_span_sec = (check_out - check_in).total_seconds() if check_in and check_out else 0
-        total_hours = round(total_span_sec / 3600, 2)
+        work_sec, break_sec, check_in, check_out = engine.compute_work_and_breaks(events)
+
+        total_span = (check_out - check_in).total_seconds() if check_in and check_out else 0
+        total_hours = round(total_span / 3600, 2)
         net_hours = round(work_sec / 3600, 2)
         break_minutes = int(break_sec / 60)
 
-        # ✅ Late & Early Calculation
-        late_minutes, is_late = cls._compute_late(shift, dt, check_in)
-        early_exit_minutes, is_early = cls._compute_early_checkout(shift, dt, check_out)
+        late_minutes, is_late = engine.compute_late(shift, dt, check_in)
+        early_minutes, _ = engine.compute_early(shift, dt, check_out)
 
-        # ✅ Build official SHIFT END datetime
+        shift_end = None
         if shift:
             end = shift["end_time"]
             is_night = shift.get("is_night_shift", False)
+            shift_end = (
+                datetime.combine(dt + timedelta(days=1), end)
+                if is_night or end <= shift["start_time"]
+                else datetime.combine(dt, end)
+            )
 
-            if is_night or end <= shift["start_time"]:
-                shift_end_dt = datetime.combine(dt + timedelta(days=1), end)
-            else:
-                shift_end_dt = datetime.combine(dt, end)
-        else:
-            shift_end_dt = None
-
-        # ✅ ✅ CORRECT OVERTIME LOGIC (NO LATE RECOVERY)
-        overtime_minutes, is_overtime = cls._compute_overtime(
-            check_out,
-            shift_end_dt,
-            late_minutes,
-            policy
+        overtime_minutes, is_overtime = engine.compute_overtime(
+            check_out, shift_end, late_minutes
         )
 
-        status = cls._decide_status(net_hours, required_hours, is_weekend, is_holiday, has_leave)
+        status = engine.decide_status(net_hours, required_hours)
 
-        data = {
+        return AttendanceDB.upsert_full_attendance({
             "employee_id": employee_id,
             "shift_id": shift_id,
             "date": dt,
@@ -251,9 +315,9 @@ class AttendanceService:
             "break_minutes": break_minutes,
             "overtime_minutes": overtime_minutes,
             "late_minutes": late_minutes,
-            "early_exit_minutes": early_exit_minutes,
+            "early_exit_minutes": early_minutes,
             "is_late": is_late,
-            "is_early_checkout": is_early,
+            "is_early_checkout": early_minutes > 0,
             "is_overtime": is_overtime,
             "is_weekend": is_weekend,
             "is_holiday": is_holiday,
@@ -261,49 +325,11 @@ class AttendanceService:
             "status": status,
             "is_payroll_locked": False,
             "locked_at": None,
-        }
+        })
 
-        return AttendanceDB.upsert_full_attendance(data)
-
-
-    # --------------------------------------------------
-    # HELPERS
-    # --------------------------------------------------
-    @classmethod
-    def _handle_no_events(cls, employee_id, dt, shift_id, is_weekend, is_holiday, has_leave, is_night):
-        if is_holiday:
-            status = "holiday"
-        elif has_leave:
-            status = "on_leave"
-        elif is_weekend:
-            status = "week_off"
-        else:
-            status = "absent"
-
-        data = {
-            "employee_id": employee_id,
-            "shift_id": shift_id,
-            "date": dt,
-            "check_in": None,
-            "check_out": None,
-            "total_hours": 0.0,
-            "net_hours": 0.0,
-            "break_minutes": 0,
-            "overtime_minutes": 0,
-            "late_minutes": 0,
-            "early_exit_minutes": 0,
-            "is_late": False,
-            "is_early_checkout": False,
-            "is_overtime": False,
-            "is_weekend": is_weekend,
-            "is_holiday": is_holiday,
-            "is_night_shift": is_night,
-            "status": status,
-            "is_payroll_locked": False,
-            "locked_at": None,
-        }
-        return AttendanceDB.upsert_full_attendance(data)
-
+    # =====================================================
+    # SHIFT WINDOW
+    # =====================================================
     @classmethod
     def _get_shift_window(cls, shift, dt):
         if shift:
@@ -328,171 +354,3 @@ class AttendanceService:
             required_hours = 8.0
 
         return window_start, window_end, required_hours, is_night, shift_id
-
-    @classmethod
-    def _compute_work_and_breaks(cls, events):
-
-        total_work = 0
-        total_break = 0
-        last_start = None
-        break_start = None
-
-        day_check_in = None
-        last_checkout = None
-
-        for ev in events:
-            t = ev["event_time"]
-            etype = ev["event_type"]
-
-            # ✅ CHECK IN
-            if etype == "check_in":
-                last_start = t
-                day_check_in = t
-
-            # ✅ BREAK START (only if working session exists)
-            elif etype == "break_start":
-                if last_start:
-                    total_work += (t - last_start).total_seconds()
-                    break_start = t
-                    last_start = None
-
-            # ✅ BREAK END (only if valid break was started)
-            elif etype == "break_end":
-                if break_start:
-                    total_break += (t - break_start).total_seconds()
-                    last_start = t
-                    break_start = None
-
-            # ✅ CHECK OUT (only if working session exists)
-            elif etype == "check_out":
-                last_checkout = t
-                if last_start:
-                    total_work += (t - last_start).total_seconds()
-                    last_start = None
-
-        day_check_out = last_checkout or day_check_in
-
-        return total_work, total_break, day_check_in, day_check_out
-
-    @classmethod
-    def _compute_late(cls, shift, dt, actual_in):
-        if not shift or not actual_in:
-            return 0, False
-        shift_start = datetime.combine(dt, shift["start_time"])
-        diff = int((actual_in - shift_start).total_seconds() / 60)
-        return (diff, True) if diff > cls.LATE_GRACE_MINUTES else (0, False)
-
-    @classmethod
-    def _compute_early_checkout(cls, shift, dt, actual_out):
-        if not shift or not actual_out:
-            return 0, False
-        end = shift["end_time"]
-        is_night = shift.get("is_night_shift", False)
-
-        if is_night or end <= shift["start_time"]:
-            shift_end = datetime.combine(dt + timedelta(days=1), end)
-        else:
-            shift_end = datetime.combine(dt, end)
-
-        diff = int((shift_end - actual_out).total_seconds() / 60)
-        return (diff, True) if diff > cls.EARLY_GRACE_MINUTES else (0, False)
-
-    @classmethod
-    def _compute_overtime(
-        cls,
-        actual_out: datetime | None,
-        shift_end: datetime | None,
-        late_minutes: int,
-        policy: Dict[str, Any],
-    ):
-        """
-        ✅ Prevents late recovery from being counted as overtime
-        ✅ Only counts work done AFTER shift end
-        """
-
-        overtime_enabled = bool(policy.get("overtime_enabled", True))
-
-        if not overtime_enabled:
-            return 0, False
-
-        if not actual_out or not shift_end:
-            return 0, False
-
-        # ✅ Real overtime only if work is done AFTER official shift end
-        if actual_out <= shift_end:
-            return 0, False
-
-        raw_overtime_minutes = int((actual_out - shift_end).total_seconds() / 60)
-
-        # ✅ Subtract recovered late time
-        adjusted_overtime = raw_overtime_minutes - late_minutes
-
-        # ✅ Never allow negative overtime
-        if adjusted_overtime <= 0:
-            return 0, False
-
-        return adjusted_overtime, True
-
-
-    @classmethod
-    def _decide_status(cls, net_hours, required_hours, is_weekend, is_holiday, has_leave):
-        # NOTE: We keep weekend/holiday/leave logic as-is.
-        # FULL_DAY_FRACTION and HALF_DAY_FRACTION now come from DB policy.
-        if net_hours >= required_hours * cls.FULL_DAY_FRACTION:
-            return "present"
-        elif net_hours >= required_hours * cls.HALF_DAY_FRACTION:
-            return "half_day"
-        else:
-            return "short_hours"
-
-    # --------------------------------------------------
-    # SESSION VALIDATORS
-    # --------------------------------------------------
-    @classmethod
-    def _get_recent_events(cls, employee_id: int):
-        now = datetime.now()
-        return AttendanceEventDB.get_events_for_window(employee_id, now - timedelta(days=2), now)
-
-    @classmethod
-    def _ensure_no_open_checkin(cls, employee_id):
-        open_ci = False
-        for ev in cls._get_recent_events(employee_id):
-            if ev["event_type"] == "check_in":
-                open_ci = True
-            elif ev["event_type"] == "check_out":
-                open_ci = False
-        if open_ci:
-            raise ValueError("Already checked in.")
-
-    @classmethod
-    def _ensure_has_open_checkin(cls, employee_id):
-        open_ci = False
-        for ev in cls._get_recent_events(employee_id):
-            if ev["event_type"] == "check_in":
-                open_ci = True
-            elif ev["event_type"] == "check_out":
-                open_ci = False
-        if not open_ci:
-            raise ValueError("No active check-in.")
-
-    @classmethod
-    def _ensure_no_open_break(cls, employee_id):
-        open_break = False
-        for ev in cls._get_recent_events(employee_id):
-            if ev["event_type"] == "break_start":
-                open_break = True
-            elif ev["event_type"] == "break_end":
-                open_break = False
-        if open_break:
-            raise ValueError("Break already in progress.")
-
-    @classmethod
-    def _ensure_has_open_break(cls, employee_id):
-        open_break = False
-        for ev in cls._get_recent_events(employee_id):
-            if ev["event_type"] == "break_start":
-                open_break = True
-            elif ev["event_type"] == "break_end":
-                open_break = False
-        if not open_break:
-            raise ValueError("No active break to end.")
