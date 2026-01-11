@@ -249,7 +249,33 @@ class LeaveBalanceDB:
 class LeaveRequestDB:
 
     # --------- VALIDATION HELPERS ---------
+    @staticmethod
+    def has_approved_leave(employee_id: int, dt: date) -> bool:
+        """
+        Used by AttendanceService.
+        Returns True if employee has any approved leave covering this date.
+        """
+        conn = get_connection()
+        cur = conn.cursor()
 
+        cur.execute(
+            """
+            SELECT 1
+            FROM leave_requests
+            WHERE employee_id = %s
+              AND status = 'approved'
+              AND start_date <= %s
+              AND end_date >= %s
+            LIMIT 1;
+            """,
+            (employee_id, dt, dt),
+        )
+
+        exists = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        return exists is not None
     @staticmethod
     def has_overlapping_approved_leave(employee_id, start_date, end_date):
         """

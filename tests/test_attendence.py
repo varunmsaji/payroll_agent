@@ -1,75 +1,108 @@
-import pytest
-from unittest.mock import MagicMock, patch
-from datetime import date
+import requests
+import json
 
-def test_check_in(client):
-    with patch("app.services.attendence_services.AttendanceService.check_in") as mock_check_in:
-        mock_check_in.return_value = {"status": "checked_in"}
-        response = client.post("/hrms/attendance/check-in", json={"employee_id": 1})
-        assert response.status_code == 200
-        assert response.json() == {"status": "checked_in"}
-        mock_check_in.assert_called_once_with(1, "manual", None)
+BASE_URL = "http://localhost:8000"
+EMPLOYEE_ID = 36
+DATE = "2026-01-11"
 
-def test_check_out(client):
-    with patch("app.services.attendence_services.AttendanceService.check_out") as mock_check_out:
-        mock_check_out.return_value = {"status": "checked_out"}
-        response = client.post("/hrms/attendance/check-out", json={"employee_id": 1})
-        assert response.status_code == 200
-        assert response.json() == {"status": "checked_out"}
-        mock_check_out.assert_called_once_with(1, "manual", None)
 
-def test_today_status(client):
-    with patch("app.database.attendence.AttendanceDB.get_by_employee_and_date") as mock_get:
-        mock_get.return_value = {"status": "present"}
-        response = client.get("/hrms/attendance/today/1")
-        assert response.status_code == 200
-        assert response.json() == {"status": "present"}
+def call(action_time, label):
+    print("\n" + "=" * 60)
+    print(label)
+    print("TIME:", action_time)
 
-def test_company_attendance(client, mock_db_connection):
-    mock_conn, mock_cursor = mock_db_connection
-    mock_cursor.fetchall.return_value = [{"employee_id": 1, "first_name": "John"}]
-    
-    response = client.get("/hrms/attendance/company")
-    assert response.status_code == 200
-    assert response.json() == [{"employee_id": 1, "first_name": "John"}]
+    resp = requests.post(
+        f"{BASE_URL}/attendance/manual",
+        data={
+            "employee_id": EMPLOYEE_ID,
+            "action_time": action_time,
+        },
+    )
 
-def test_late_report(client, mock_db_connection):
-    mock_conn, mock_cursor = mock_db_connection
-    mock_cursor.fetchall.return_value = [{"employee_id": 1, "is_late": True}]
-    
-    response = client.get(f"/hrms/attendance/reports/late?start_date={date.today()}&end_date={date.today()}")
-    assert response.status_code == 200
-    assert response.json() == [{"employee_id": 1, "is_late": True}]
+    print("STATUS:", resp.status_code)
+    try:
+        print(json.dumps(resp.json(), indent=2))
+    except Exception:
+        print(resp.text)
 
-def test_lock_attendance(client, mock_db_connection):
-    mock_conn, mock_cursor = mock_db_connection
-    
-    response = client.post(f"/hrms/attendance/lock/1?dt={date.today()}")
-    assert response.status_code == 200
-    assert response.json() == {"message": "Attendance locked"}
-    mock_conn.commit.assert_called_once()
 
-def test_override_attendance_success(client, mock_db_connection):
-    mock_conn, mock_cursor = mock_db_connection
-    mock_cursor.fetchone.return_value = {"id": 1, "status": "Present"}
-    
-    payload = {
-        "check_in": "09:00",
-        "check_out": "18:00",
-        "status": "Present"
-    }
-    response = client.put(f"/hrms/attendance/override/1?dt={date.today()}", json=payload)
-    assert response.status_code == 200
-    assert response.json()["message"] == "Attendance overridden successfully"
-    mock_conn.commit.assert_called_once()
+def expected(title, data):
+    print("\nEXPECTED RESULT:", title)
+    for k, v in data.items():
+        print(f"  {k}: {v}")
 
-def test_override_attendance_locked(client, mock_db_connection):
-    mock_conn, mock_cursor = mock_db_connection
-    mock_cursor.fetchone.return_value = None # Simulate locked or not found
-    
-    payload = {
-        "check_in": "09:00"
-    }
-    response = client.put(f"/hrms/attendance/override/1?dt={date.today()}", json=payload)
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Attendance is locked or record not found"
+
+print("⚠️ CLEAN DB FIRST:")
+print("""
+DELETE FROM attendance_events WHERE employee_id = 36;
+DELETE FROM attendance WHERE employee_id = 36;
+""")
+input("Press ENTER once done...")
+
+
+# =====================================================
+# SCENARIO 1: NORMAL OFFICE DAY (EXPECTED: SHORT HOURS)
+# =====================================================
+call(f"{DATE}T09:00:00", "CHECK-IN")
+call(f"{DATE}T13:00:00", "BREAK START")
+call(f"{DATE}T13:30:00", "BREAK END")
+call(f"{DATE}T18:00:00", "CHECK-OUT")
+
+expected("NORMAL DAY", {
+    "worked_hours": "~8.5",
+    "required_hours": "~24",
+    "late_minutes": 540,      # 09:00 vs 00:00
+    "early_exit_minutes": 359,  # 23:59 vs 18:00
+    "status": "short_hours"
+})
+
+
+input("\nClean DB and press ENTER for next test...")
+
+
+# =====================================================
+# SCENARIO 2: HALF DAY (12+ HOURS)
+# =====================================================
+call(f"{DATE}T06:00:00", "CHECK-IN")
+call(f"{DATE}T12:00:00", "BREAK START")
+call(f"{DATE}T12:30:00", "BREAK END")
+call(f"{DATE}T18:30:00", "CHECK-OUT")
+
+expected("HALF DAY", {
+    "worked_hours": "~12",
+    "status": "half_day"
+})
+
+
+input("\nClean DB and press ENTER for next test...")
+
+
+# =====================================================
+# SCENARIO 3: FULL DAY (18+ HOURS)
+# =====================================================
+call(f"{DATE}T00:30:00", "CHECK-IN")
+call(f"{DATE}T12:00:00", "BREAK START")
+call(f"{DATE}T12:30:00", "BREAK END")
+call(f"{DATE}T23:00:00", "CHECK-OUT")
+
+expected("FULL DAY", {
+    "worked_hours": "~22",
+    "status": "present"
+})
+
+
+print("\nFINAL DB CHECK:")
+print("""
+SELECT
+    date,
+    check_in,
+    check_out,
+    net_hours,
+    break_minutes,
+    late_minutes,
+    early_exit_minutes,
+    overtime_minutes,
+    status
+FROM attendance
+WHERE employee_id = 36;
+""")

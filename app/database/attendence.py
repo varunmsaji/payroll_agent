@@ -2,6 +2,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import date, datetime
 import json
+from typing import Optional
 
 # ==========================================
 # DATABASE CONNECTION
@@ -26,24 +27,34 @@ class AttendanceEventDB:
     
     
     @staticmethod
-    def add_event(employee_id: int, event_type: str, source="manual", meta=None):
+    def add_event(
+        employee_id: int,
+        event_type: str,
+        source: str = "manual",
+        meta: Optional[dict] = None,
+        event_time: Optional[datetime] = None,
+    ):
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        meta_json = json.dumps(meta) if meta is not None else None
+        event_time = event_time or datetime.utcnow()
+        meta_json = json.dumps(meta) if meta else None
 
-        cur.execute("""
-            INSERT INTO attendance_events (employee_id, event_type, event_time, source, meta)
-            VALUES (%s, %s, NOW(), %s, %s)
+        cur.execute(
+            """
+            INSERT INTO attendance_events
+                (employee_id, event_type, event_time, source, meta)
+            VALUES (%s, %s, %s, %s, %s)
             RETURNING *;
-        """, (employee_id, event_type, source, meta_json))
+            """,
+            (employee_id, event_type, event_time, source, meta_json),
+        )
 
         row = cur.fetchone()
         conn.commit()
         cur.close()
         conn.close()
         return row
-
     @staticmethod
     def get_events_for_window(employee_id: int, start_dt: datetime, end_dt: datetime):
         conn = get_connection()
