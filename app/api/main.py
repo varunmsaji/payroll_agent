@@ -13,6 +13,7 @@ from app.api.attendence_dashboard import router as attendence_dashboard_router
 from app.api.attendence_api.attendence_actions_api import router as attendence_actions_router
 from app.api.attendence_api.attendence_display import router as attendence_display_router
 from app.api.face_recognition import router as face_recognition_router
+from app.api.attendence_test_api import router as attendence_test_router
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -34,4 +35,4 @@ app.include_router(settings_router)
 app.include_router(attendence_actions_router)
 app.include_router(attendence_display_router)
 app.include_router(face_recognition_router)
-
+app.include_router(attendence_test_router)

@@ -1,11 +1,9 @@
 from fastapi import APIRouter, HTTPException, Form
 from datetime import datetime
 from typing import Optional
-from contextlib import contextmanager
 
 from app.services.attendence_services import AttendanceService
 from app.database.attendence import AttendanceEventDB, ShiftDB
-
 
 router = APIRouter(
     prefix="/attendance",
@@ -14,25 +12,7 @@ router = APIRouter(
 
 
 # =========================================================
-# TEST-ONLY TIME OVERRIDE (TEMPORARY)
-# =========================================================
-@contextmanager
-def override_now(fake_now: datetime):
-    """
-    TEST ONLY.
-    Temporarily overrides datetime.now() so AttendanceService
-    behaves as if current time == fake_now.
-    """
-    real_now = datetime.now
-    datetime.now = lambda: fake_now
-    try:
-        yield
-    finally:
-        datetime.now = real_now
-
-
-# =========================================================
-# MANUAL ATTENDANCE TEST ENDPOINT
+# MANUAL ATTENDANCE TEST ENDPOINT (TIME-INJECTED)
 # =========================================================
 @router.post("/manual")
 def manual_attendance(
@@ -42,25 +22,29 @@ def manual_attendance(
     longitude: Optional[float] = Form(None),
 ):
     """
-    TEMPORARY TEST ENDPOINT
+    TEST-ONLY ENDPOINT
 
-    Allows testing attendance flow without:
-    - face recognition
-    - waiting for real time
+    ✔ No datetime monkey-patching
+    ✔ Uses injected time (production-safe pattern)
+    ✔ Matches Face Attendance logic
     """
 
-    # Parse fake time
+    # -----------------------------------------------------
+    # 1️⃣ Parse injected time
+    # -----------------------------------------------------
     try:
-        fake_now = datetime.fromisoformat(action_time)
+        now = datetime.fromisoformat(action_time)
     except ValueError:
         raise HTTPException(
             status_code=400,
             detail="Invalid action_time format. Use ISO datetime.",
         )
 
-    today = fake_now.date()
+    today = now.date()
 
-    # Ensure employee has a shift
+    # -----------------------------------------------------
+    # 2️⃣ Validate shift
+    # -----------------------------------------------------
     shift = ShiftDB.get_employee_shift(employee_id, today)
     if not shift:
         raise HTTPException(
@@ -68,71 +52,82 @@ def manual_attendance(
             detail="No active shift assigned to employee",
         )
 
-    # Compute shift window
+    # -----------------------------------------------------
+    # 3️⃣ Compute session window
+    # -----------------------------------------------------
     window_start, window_end, _, _, _ = AttendanceService._get_shift_window(
         shift, today
     )
 
-    # Fetch session events up to fake time
+    # -----------------------------------------------------
+    # 4️⃣ Fetch events ONLY up to injected time
+    # -----------------------------------------------------
     events = AttendanceEventDB.get_events_for_window(
         employee_id,
         window_start,
-        fake_now,
+        now,
     )
 
     meta = {
         "latitude": latitude,
         "longitude": longitude,
         "method": "manual-test",
-        "forced_time": fake_now.isoformat(),
+        "forced_time": now.isoformat(),
     }
 
-    # Execute attendance logic with fake time
+    # -----------------------------------------------------
+    # 5️⃣ Decide action (same logic as Face API)
+    # -----------------------------------------------------
     try:
-        with override_now(fake_now):
+        if not events:
+            action = "check_in"
+            result = AttendanceService.check_in(
+                employee_id,
+                source="manual-test",
+                meta=meta,
+                now=now,
+            )
 
-            if not events:
-                action = "check_in"
-                result = AttendanceService.check_in(
+        else:
+            last_event = events[-1]["event_type"]
+
+            if last_event == "check_in":
+                action = "break_start"
+                result = AttendanceService.break_start(
                     employee_id,
                     source="manual-test",
                     meta=meta,
+                    now=now,
+                )
+
+            elif last_event == "break_start":
+                action = "break_end"
+                result = AttendanceService.break_end(
+                    employee_id,
+                    source="manual-test",
+                    meta=meta,
+                    now=now,
                 )
 
             else:
-                last_event = events[-1]["event_type"]
-
-                if last_event == "check_in":
-                    action = "break_start"
-                    result = AttendanceService.break_start(
-                        employee_id,
-                        source="manual-test",
-                        meta=meta,
-                    )
-
-                elif last_event == "break_start":
-                    action = "break_end"
-                    result = AttendanceService.break_end(
-                        employee_id,
-                        source="manual-test",
-                        meta=meta,
-                    )
-
-                else:
-                    action = "check_out"
-                    result = AttendanceService.check_out(
-                        employee_id,
-                        source="manual-test",
-                        meta=meta,
-                    )
+                action = "check_out"
+                result = AttendanceService.check_out(
+                    employee_id,
+                    source="manual-test",
+                    meta=meta,
+                    now=now,
+                )
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    # -----------------------------------------------------
+    # 6️⃣ Response
+    # -----------------------------------------------------
     return {
         "test_mode": True,
         "employee_id": employee_id,
         "action": action,
-        "used_time": fake_now.isoformat(),
+        "used_time": now.isoformat(),
         "attendance_event": result,
     }
