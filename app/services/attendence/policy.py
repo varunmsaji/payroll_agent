@@ -6,6 +6,19 @@ from datetime import datetime, date, time
 from app.database.connection import get_connection
 
 
+
+
+@dataclass(frozen=True)
+class AttendancePolicy:
+    late_grace_minutes: int
+    early_exit_grace_minutes: int
+    early_checkin_grace_minutes: int
+    early_checkin_action: str   # 👈 NEW
+    full_day_fraction: float
+    half_day_fraction: float
+    overtime_enabled: bool
+
+
 @dataclass(frozen=True)
 class AttendancePolicy:
     late_grace_minutes: int
@@ -14,6 +27,8 @@ class AttendancePolicy:
     full_day_fraction: float
     half_day_fraction: float
     overtime_enabled: bool
+
+
 
 
 class AttendancePolicyDB:

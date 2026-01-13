@@ -9,7 +9,7 @@ from datetime import datetime
 from fastapi import Body
 
 
-from app.services.attendence_services import AttendanceService
+from app.services.attendence import service
 from app.database.connection import get_connection
 from app.database.attendence import AttendanceDB, AttendanceEventDB
 

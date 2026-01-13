@@ -7,33 +7,85 @@ class AttendanceEngine:
     def __init__(self, policy):
         self.policy = policy
 
-    def compute_work_and_breaks(self, events):
+    def compute_work_and_breaks(self, events, shift, dt):
+        """
+        Computes:
+        - total work seconds
+        - total break seconds
+        - normalized check_in
+        - check_out
+
+        Applies early check-in policy correctly
+        """
+
         work_sec = 0
         break_sec = 0
 
         last_work_start = None
         last_break_start = None
+
         check_in = None
         check_out = None
+
+        # --------------------------------------------------
+        # Shift start reference
+        # --------------------------------------------------
+        shift_start = None
+        if shift and shift.get("start_time"):
+            shift_start = datetime.combine(dt, shift["start_time"])
 
         for ev in events:
             t = ev["event_time"]
             et = ev["event_type"]
 
+            # -------------------------
+            # CHECK-IN
+            # -------------------------
             if et == "check_in":
-                check_in = t
-                last_work_start = t
 
+                normalized_time = t
+
+                # Handle early check-in
+                if shift_start and t < shift_start:
+                    grace = self.policy.early_checkin_grace_minutes
+                    action = self.policy.early_checkin_action
+
+                    diff_minutes = int((shift_start - t).total_seconds() / 60)
+
+                    # Beyond grace window
+                    if diff_minutes > grace:
+                        if action == "block":
+                            raise Exception("Early check-in not allowed")
+
+                        elif action == "ignore":
+                            continue  # Do not start work
+
+                        elif action == "cap":
+                            normalized_time = shift_start
+                        # allow → keep original t
+
+                check_in = normalized_time
+                last_work_start = normalized_time
+
+            # -------------------------
+            # BREAK START
+            # -------------------------
             elif et == "break_start" and last_work_start:
                 work_sec += (t - last_work_start).total_seconds()
                 last_break_start = t
                 last_work_start = None
 
+            # -------------------------
+            # BREAK END
+            # -------------------------
             elif et == "break_end" and last_break_start:
                 break_sec += (t - last_break_start).total_seconds()
                 last_work_start = t
                 last_break_start = None
 
+            # -------------------------
+            # CHECK-OUT
+            # -------------------------
             elif et == "check_out":
                 check_out = t
                 if last_work_start:

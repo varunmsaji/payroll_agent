@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Form
 from datetime import datetime
 from typing import Optional
 
-from app.services.attendence_services import AttendanceService
+from app.services.attendence.service import AttendanceService
 from app.database.attendence import AttendanceEventDB, ShiftDB
 
 router = APIRouter(

@@ -4,7 +4,7 @@ from datetime import date
 from typing import Optional, Dict
 from psycopg2.extras import RealDictCursor
 
-from app.services.attendence_services import AttendanceService
+from app.services.attendence import service
 from app.database.connection import get_connection
 
 router = APIRouter(prefix="/hrms/attendance", tags=["Attendance - Actions"])
