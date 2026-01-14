@@ -93,6 +93,42 @@ class AttendanceEngine:
                     last_work_start = None
 
         return work_sec, break_sec, check_in, check_out
+    def compute_early_overtime(self, shift, dt, actual_check_in):
+        """
+        Returns (early_ot_minutes, is_early_ot)
+        """
+
+        if not shift or not actual_check_in:
+            return 0, False
+
+        if not shift.get("allow_early_overtime"):
+            return 0, False
+
+        shift_start = datetime.combine(dt, shift["start_time"])
+
+        # Not early
+        if actual_check_in >= shift_start:
+            return 0, False
+
+        early_minutes = int((shift_start - actual_check_in).total_seconds() / 60)
+
+        # Apply grace
+        grace = shift.get("early_overtime_grace_minutes", 0)
+        if early_minutes <= grace:
+            return 0, False
+
+        eligible_minutes = early_minutes - grace
+
+        # Apply cap
+        max_ot = shift.get("early_overtime_max_minutes", 0)
+        if max_ot > 0:
+            eligible_minutes = min(eligible_minutes, max_ot)
+
+        # Approval check (future extension)
+        if shift.get("early_overtime_requires_approval"):
+            return 0, False  # approval system plugs here later
+
+        return eligible_minutes, True
 
     def compute_late(self, shift, dt, actual_in):
         if not shift or not actual_in:
