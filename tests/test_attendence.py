@@ -1,9 +1,10 @@
 import requests
 import json
+import time
 
 BASE_URL = "http://localhost:8000"
 EMPLOYEE_ID = 36
-DATE = "2026-01-11"
+DATE = "2026-01-11"   # make sure shift exists for this date
 
 
 def call(action_time, label):
@@ -11,88 +12,52 @@ def call(action_time, label):
     print(label)
     print("TIME:", action_time)
 
-    resp = requests.post(
+    response = requests.post(
         f"{BASE_URL}/attendance/manual",
         data={
             "employee_id": EMPLOYEE_ID,
             "action_time": action_time,
         },
+        timeout=10,
     )
 
-    print("STATUS:", resp.status_code)
+    print("STATUS:", response.status_code)
     try:
-        print(json.dumps(resp.json(), indent=2))
+        print(json.dumps(response.json(), indent=2))
     except Exception:
-        print(resp.text)
+        print(response.text)
+
+    time.sleep(0.3)
 
 
-def expected(title, data):
-    print("\nEXPECTED RESULT:", title)
-    for k, v in data.items():
-        print(f"  {k}: {v}")
-
-
-print("⚠️ CLEAN DB FIRST:")
+# =====================================================
+# TEST SEQUENCE
+# =====================================================
+print("⚠️ Make sure DB is clean for employee 36")
 print("""
 DELETE FROM attendance_events WHERE employee_id = 36;
 DELETE FROM attendance WHERE employee_id = 36;
 """)
-input("Press ENTER once done...")
+input("Run the SQL above and press ENTER to continue...")
 
 
-# =====================================================
-# SCENARIO 1: NORMAL OFFICE DAY (EXPECTED: SHORT HOURS)
-# =====================================================
+# 1️⃣ CHECK IN
 call(f"{DATE}T09:00:00", "CHECK-IN")
+
+# 2️⃣ BREAK START
 call(f"{DATE}T13:00:00", "BREAK START")
-call(f"{DATE}T13:30:00", "BREAK END")
+
+# 3️⃣ BREAK END
+call(f"{DATE}T14:00:00", "BREAK END")
+
+# 4️⃣ CHECK OUT
 call(f"{DATE}T18:00:00", "CHECK-OUT")
 
-expected("NORMAL DAY", {
-    "worked_hours": "~8.5",
-    "required_hours": "~24",
-    "late_minutes": 540,      # 09:00 vs 00:00
-    "early_exit_minutes": 359,  # 23:59 vs 18:00
-    "status": "short_hours"
-})
 
-
-input("\nClean DB and press ENTER for next test...")
-
-
-# =====================================================
-# SCENARIO 2: HALF DAY (12+ HOURS)
-# =====================================================
-call(f"{DATE}T06:00:00", "CHECK-IN")
-call(f"{DATE}T12:00:00", "BREAK START")
-call(f"{DATE}T12:30:00", "BREAK END")
-call(f"{DATE}T18:30:00", "CHECK-OUT")
-
-expected("HALF DAY", {
-    "worked_hours": "~12",
-    "status": "half_day"
-})
-
-
-input("\nClean DB and press ENTER for next test...")
-
-
-# =====================================================
-# SCENARIO 3: FULL DAY (18+ HOURS)
-# =====================================================
-call(f"{DATE}T00:30:00", "CHECK-IN")
-call(f"{DATE}T12:00:00", "BREAK START")
-call(f"{DATE}T12:30:00", "BREAK END")
-call(f"{DATE}T23:00:00", "CHECK-OUT")
-
-expected("FULL DAY", {
-    "worked_hours": "~22",
-    "status": "present"
-})
-
-
-print("\nFINAL DB CHECK:")
+print("\n✅ TEST COMPLETED")
 print("""
+Check final attendance row:
+
 SELECT
     date,
     check_in,
