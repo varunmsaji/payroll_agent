@@ -1,9 +1,12 @@
 from fastapi import APIRouter, HTTPException, Form
 from datetime import datetime
 from typing import Optional
+import logging
 
-from app.services.attendence.service import AttendanceService
+from app.services.attendence import AttendanceService
 from app.database.attendence import AttendanceEventDB, ShiftDB
+
+logger = logging.getLogger("attendance.manual")
 
 router = APIRouter(
     prefix="/attendance",
@@ -11,62 +14,27 @@ router = APIRouter(
 )
 
 
-# =========================================================
-# MANUAL ATTENDANCE TEST ENDPOINT (TIME-INJECTED)
-# =========================================================
 @router.post("/manual")
 def manual_attendance(
     employee_id: int = Form(...),
-    action_time: str = Form(..., description="ISO datetime e.g. 2026-01-11T09:00:00"),
+    action_time: str = Form(...),
     latitude: Optional[float] = Form(None),
     longitude: Optional[float] = Form(None),
 ):
-    """
-    TEST-ONLY ENDPOINT
+    logger.info("==== MANUAL ATTENDANCE START ====")
 
-    ✔ No datetime monkey-patching
-    ✔ Uses injected time (production-safe pattern)
-    ✔ Matches Face Attendance logic
-    """
-
-    # -----------------------------------------------------
-    # 1️⃣ Parse injected time
-    # -----------------------------------------------------
+    # 1️⃣ Parse time
     try:
         now = datetime.fromisoformat(action_time)
     except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid action_time format. Use ISO datetime.",
-        )
+        raise HTTPException(400, "Invalid action_time format")
 
     today = now.date()
 
-    # -----------------------------------------------------
     # 2️⃣ Validate shift
-    # -----------------------------------------------------
     shift = ShiftDB.get_employee_shift(employee_id, today)
     if not shift:
-        raise HTTPException(
-            status_code=400,
-            detail="No active shift assigned to employee",
-        )
-
-    # -----------------------------------------------------
-    # 3️⃣ Compute session window
-    # -----------------------------------------------------
-    window_start, window_end, _, _, _ = AttendanceService._get_shift_window(
-        shift, today
-    )
-
-    # -----------------------------------------------------
-    # 4️⃣ Fetch events ONLY up to injected time
-    # -----------------------------------------------------
-    events = AttendanceEventDB.get_events_for_window(
-        employee_id,
-        window_start,
-        now,
-    )
+        raise HTTPException(400, "No active shift assigned")
 
     meta = {
         "latitude": latitude,
@@ -75,55 +43,49 @@ def manual_attendance(
         "forced_time": now.isoformat(),
     }
 
-    # -----------------------------------------------------
-    # 5️⃣ Decide action (same logic as Face API)
-    # -----------------------------------------------------
     try:
-        if not events:
+        # 🔑 CRITICAL FIX: use SERVICE STATE, not API events
+        events = AttendanceService._get_session_events(employee_id, today)
+        state = AttendanceService._derive_state(events)
+
+        logger.debug(f"Derived state: {state}")
+
+        if not state["checked_in"]:
             action = "check_in"
             result = AttendanceService.check_in(
-                employee_id,
-                source="manual-test",
-                meta=meta,
-                now=now,
+                employee_id, "manual-test", meta, now
             )
 
-        else:
-            last_event = events[-1]["event_type"]
+        elif state["checked_in"] and state["on_break"]:
+            action = "break_end"
+            result = AttendanceService.break_end(
+                employee_id, "manual-test", meta, now
+            )
 
-            if last_event == "check_in":
+        elif state["checked_in"] and not state["on_break"]:
+            # decide break vs checkout
+            window_start, window_end, *_ = AttendanceService._get_shift_window(
+                shift, today
+            )
+
+            if now < window_end:
                 action = "break_start"
                 result = AttendanceService.break_start(
-                    employee_id,
-                    source="manual-test",
-                    meta=meta,
-                    now=now,
+                    employee_id, "manual-test", meta, now
                 )
-
-            elif last_event == "break_start":
-                action = "break_end"
-                result = AttendanceService.break_end(
-                    employee_id,
-                    source="manual-test",
-                    meta=meta,
-                    now=now,
-                )
-
             else:
                 action = "check_out"
                 result = AttendanceService.check_out(
-                    employee_id,
-                    source="manual-test",
-                    meta=meta,
-                    now=now,
+                    employee_id, "manual-test", meta, now
                 )
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.exception("Attendance action failed")
+        raise HTTPException(400, f"{type(e).__name__}: {str(e)}")
 
-    # -----------------------------------------------------
-    # 6️⃣ Response
-    # -----------------------------------------------------
+    logger.info(f"SUCCESS action={action}")
+    logger.info("==== MANUAL ATTENDANCE END ====")
+
     return {
         "test_mode": True,
         "employee_id": employee_id,

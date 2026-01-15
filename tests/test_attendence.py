@@ -1,153 +1,109 @@
 import requests
 import json
-from datetime import date
+import time
 
 BASE_URL = "http://localhost:8000"
 EMPLOYEE_ID = 36
-TEST_DATE = "2026-01-11"
+DATE = "2026-01-11"   # make sure shift exists for this date
 
 
-# ------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------
-def cleanup_db():
-    print("\n🧹 Cleaning DB...")
-    requests.post(
-        f"{BASE_URL}/attendance/debug/cleanup",
-        json={"employee_id": EMPLOYEE_ID},
-    )
+def call(action_time, label):
+    print("\n" + "=" * 60)
+    print(label)
+    print("TIME:", action_time)
 
-
-def call(action_time: str, label: str):
-    print(f"\n➡️ {label} @ {action_time}")
-    resp = requests.post(
+    response = requests.post(
         f"{BASE_URL}/attendance/manual",
         data={
             "employee_id": EMPLOYEE_ID,
             "action_time": action_time,
         },
+        timeout=10,
     )
-    print("STATUS:", resp.status_code)
 
-    if resp.status_code != 200:
-        print("❌ API ERROR:", resp.text)
-        return False
+    print("STATUS:", response.status_code)
+    try:
+        print(json.dumps(response.json(), indent=2))
+    except Exception:
+        print(response.text)
 
-    return True
-
-
-def fetch_attendance():
-    resp = requests.get(
-        f"{BASE_URL}/attendance/debug/{EMPLOYEE_ID}/{TEST_DATE}"
-    )
-    return resp.json()
+    time.sleep(0.3)
 
 
-def assert_result(actual, expected):
-    errors = []
-
-    for key, exp_val in expected.items():
-        if actual.get(key) != exp_val:
-            errors.append(f"{key}: expected {exp_val}, got {actual.get(key)}")
-
-    if errors:
-        print("❌ FAIL")
-        for e in errors:
-            print("   -", e)
-    else:
-        print("✅ PASS")
+# =====================================================
+# TEST SEQUENCE
+# =====================================================
+print("⚠️ Make sure DB is clean for employee 36")
+print("""
+DELETE FROM attendance_events WHERE employee_id = 36;
+DELETE FROM attendance WHERE employee_id = 36;
+""")
+input("Run the SQL above and press ENTER to continue...")
 
 
-# ------------------------------------------------------------
-# Scenario Runner
-# ------------------------------------------------------------
-def run_scenario(name, actions, expected):
-    print("\n" + "=" * 80)
-    print(f"🧪 SCENARIO: {name}")
+# =====================================================
+# SCENARIO 1: NORMAL OFFICE DAY (EXPECTED: SHORT HOURS)
+# =====================================================
+call(f"{DATE}T09:00:00", "CHECK-IN")
+call(f"{DATE}T13:00:00", "BREAK START")
+call(f"{DATE}T13:30:00", "BREAK END")
+call(f"{DATE}T18:00:00", "CHECK-OUT")
 
-    cleanup_db()
-
-    for action in actions:
-        ok = call(action["time"], action["label"])
-        if not ok:
-            print("❌ Scenario aborted due to API error")
-            return
-
-    attendance = fetch_attendance()
-
-    print("\n📊 FINAL ATTENDANCE:")
-    print(json.dumps(attendance, indent=2))
-
-    assert_result(attendance, expected)
+expected("NORMAL DAY", {
+    "worked_hours": "~8.5",
+    "required_hours": "~24",
+    "late_minutes": 540,      # 09:00 vs 00:00
+    "early_exit_minutes": 359,  # 23:59 vs 18:00
+    "status": "short_hours"
+})
 
 
-# ------------------------------------------------------------
-# TEST CASES
-# ------------------------------------------------------------
+input("\nClean DB and press ENTER for next test...")
 
-run_scenario(
-    "NORMAL BREAK (INSIDE WINDOW)",
-    [
-        {"label": "CHECK-IN", "time": "2026-01-11T09:00:00"},
-        {"label": "BREAK START", "time": "2026-01-11T11:00:00"},
-        {"label": "BREAK END", "time": "2026-01-11T12:00:00"},
-        {"label": "CHECK-OUT", "time": "2026-01-11T18:00:00"},
-    ],
-    expected={
-        "status": "present",
-        "break_minutes": 60,
-    },
-)
 
-run_scenario(
-    "BREAK END WITHIN GRACE",
-    [
-        {"label": "CHECK-IN", "time": "2026-01-11T09:00:00"},
-        {"label": "BREAK START", "time": "2026-01-11T11:00:00"},
-        {"label": "BREAK END (GRACE)", "time": "2026-01-11T12:10:00"},
-        {"label": "CHECK-OUT", "time": "2026-01-11T18:00:00"},
-    ],
-    expected={
-        "status": "present",
-        "break_minutes": 70,
-    },
-)
+# =====================================================
+# SCENARIO 2: HALF DAY (12+ HOURS)
+# =====================================================
+call(f"{DATE}T06:00:00", "CHECK-IN")
+call(f"{DATE}T12:00:00", "BREAK START")
+call(f"{DATE}T12:30:00", "BREAK END")
+call(f"{DATE}T18:30:00", "CHECK-OUT")
 
-run_scenario(
-    "BREAK END AFTER GRACE (VIOLATION)",
-    [
-        {"label": "CHECK-IN", "time": "2026-01-11T09:00:00"},
-        {"label": "BREAK START", "time": "2026-01-11T11:00:00"},
-        {"label": "BREAK END (LATE)", "time": "2026-01-11T12:25:00"},
-        {"label": "CHECK-OUT", "time": "2026-01-11T18:00:00"},
-    ],
-    expected={
-        "status": "short_hours",
-    },
-)
+expected("HALF DAY", {
+    "worked_hours": "~12",
+    "status": "half_day"
+})
 
-run_scenario(
-    "BREAK START BEFORE WINDOW",
-    [
-        {"label": "CHECK-IN", "time": "2026-01-11T09:00:00"},
-        {"label": "BREAK START (INVALID)", "time": "2026-01-11T10:30:00"},
-        {"label": "BREAK END", "time": "2026-01-11T11:15:00"},
-        {"label": "CHECK-OUT", "time": "2026-01-11T18:00:00"},
-    ],
-    expected={
-        "status": "short_hours",
-    },
-)
 
-run_scenario(
-    "NO BREAK TAKEN (MANDATORY BREAK)",
-    [
-        {"label": "CHECK-IN", "time": "2026-01-11T09:00:00"},
-        {"label": "CHECK-OUT", "time": "2026-01-11T18:00:00"},
-    ],
-    expected={
-        "status": "short_hours",
-    },
-)
+input("\nClean DB and press ENTER for next test...")
 
-print("\n🎉 ALL SCENARIOS EXECUTED")
+
+# =====================================================
+# SCENARIO 3: FULL DAY (18+ HOURS)
+# =====================================================
+call(f"{DATE}T00:30:00", "CHECK-IN")
+call(f"{DATE}T12:00:00", "BREAK START")
+call(f"{DATE}T12:30:00", "BREAK END")
+call(f"{DATE}T23:00:00", "CHECK-OUT")
+
+expected("FULL DAY", {
+    "worked_hours": "~22",
+    "status": "present"
+})
+
+
+print("\nFINAL DB CHECK:")
+print("""
+SELECT
+    date,
+    check_in,
+    check_out,
+    net_hours,
+    break_minutes,
+    late_minutes,
+    early_exit_minutes,
+    overtime_minutes,
+    status
+FROM attendance
+WHERE employee_id = 36;
+""")

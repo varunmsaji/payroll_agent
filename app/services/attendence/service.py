@@ -124,38 +124,38 @@ class AttendanceService:
         policy = AttendancePolicyDB.get_policy_for_date(dt)
         engine = AttendanceEngine(policy)
 
-        # --------------------------------------------------
-        # 1️⃣ Payroll lock check
-        # --------------------------------------------------
+        # -------------------------------------------------
+        # Payroll lock check
+        # -------------------------------------------------
         existing = AttendanceDB.get_by_employee_and_date(employee_id, dt)
         if existing and existing.get("is_payroll_locked"):
             raise AttendanceLocked("Attendance locked")
 
-        # --------------------------------------------------
-        # 2️⃣ Day flags
-        # --------------------------------------------------
+        # -------------------------------------------------
+        # Day flags
+        # -------------------------------------------------
         is_weekend = dt.weekday() >= 5
         is_holiday = HolidayDB.is_holiday(dt)
         has_leave = LeaveRequestDB.has_approved_leave(employee_id, dt)
 
-        # --------------------------------------------------
-        # 3️⃣ Shift + attendance window
-        # --------------------------------------------------
+        # -------------------------------------------------
+        # Shift + window
+        # -------------------------------------------------
         shift = ShiftDB.get_employee_shift(employee_id, dt)
         window_start, window_end, required_hours, is_night, shift_id = cls._get_shift_window(
             shift, dt
         )
 
-        # --------------------------------------------------
-        # 4️⃣ Fetch events
-        # --------------------------------------------------
+        # -------------------------------------------------
+        # Events
+        # -------------------------------------------------
         events = AttendanceEventDB.get_events_for_window(
             employee_id, window_start, window_end
         )
 
-        # --------------------------------------------------
-        # 5️⃣ No events → absent / holiday / leave
-        # --------------------------------------------------
+        # -------------------------------------------------
+        # No events case
+        # -------------------------------------------------
         if not events:
             status = (
                 "holiday"
@@ -177,91 +177,47 @@ class AttendanceService:
                 "is_night_shift": is_night,
             })
 
-        # --------------------------------------------------
-        # 6️⃣ Work & break computation
-        # --------------------------------------------------
-        work_sec, break_sec, check_in, check_out = engine.compute_work_and_breaks(
-            events, shift, dt
-        )
+        # -------------------------------------------------
+        # Compute work / break
+        # -------------------------------------------------
+        work_sec, break_sec, check_in, check_out = engine.compute_work_and_breaks(events)
 
-        total_hours = round((work_sec + break_sec) / 3600, 2)
         net_hours = round(work_sec / 3600, 2)
+        total_hours = round((work_sec + break_sec) / 3600, 2)
 
-        # --------------------------------------------------
-        # 7️⃣ Late / early exit
-        # --------------------------------------------------
+        # -------------------------------------------------
+        # Late / Early / Overtime
+        # -------------------------------------------------
         late_minutes, is_late = engine.compute_late(shift, dt, check_in)
-        early_exit_minutes, is_early_checkout = engine.compute_early(
-            shift, dt, check_out
-        )
-
-        # --------------------------------------------------
-        # 8️⃣ Early overtime (NEW)
-        # --------------------------------------------------
-        early_ot_minutes, is_early_ot = engine.compute_early_overtime(
-            shift, dt, check_in
-        )
-
-        # --------------------------------------------------
-        # 9️⃣ Late overtime (existing)
-        # --------------------------------------------------
-        late_ot_minutes, is_late_ot = engine.compute_overtime(
+        early_minutes, is_early_checkout = engine.compute_early(shift, dt, check_out)
+        overtime_minutes, is_overtime = engine.compute_overtime(
             check_out, window_end, late_minutes
         )
 
-        total_overtime_minutes = early_ot_minutes + late_ot_minutes
-        is_overtime = total_overtime_minutes > 0
-
-        # --------------------------------------------------
-        # 🔟 Break policy enforcement
-        # --------------------------------------------------
-        break_violation = False
-        break_taken = False
-
-        if shift and shift.get("break_start") and shift.get("break_end"):
-            break_start_dt = datetime.combine(dt, shift["break_start"])
-            break_end_dt = datetime.combine(dt, shift["break_end"])
-            grace = shift.get("break_grace_minutes", 0)
-
-            allowed_break_end = break_end_dt + timedelta(minutes=grace)
-
-            for ev in events:
-                if ev["event_type"] == "break_start":
-                    break_taken = True
-                    if not (break_start_dt <= ev["event_time"] <= break_end_dt):
-                        break_violation = True
-
-                elif ev["event_type"] == "break_end":
-                    if ev["event_time"] > allowed_break_end:
-                        break_violation = True
-
-            if shift.get("break_required", True) and not break_taken:
-                break_violation = True
-
-        # --------------------------------------------------
-        # 1️⃣1️⃣ Final status decision
-        # --------------------------------------------------
+        # -------------------------------------------------
+        # Final status
+        # -------------------------------------------------
         status = engine.decide_status(net_hours, required_hours)
 
-        if break_violation:
-            status = shift.get("break_violation_action", "short_hours")
-
-        # --------------------------------------------------
-        # 1️⃣2️⃣ Persist attendance
-        # --------------------------------------------------
+        # -------------------------------------------------
+        # Persist attendance (✅ FULL DB CONTRACT)
+        # -------------------------------------------------
         return AttendanceDB.upsert_full_attendance({
             "employee_id": employee_id,
             "shift_id": shift_id,
             "date": dt,
             "check_in": check_in,
             "check_out": check_out,
+
+            # REQUIRED
             "total_hours": total_hours,
+
             "net_hours": net_hours,
             "break_minutes": int(break_sec / 60),
             "late_minutes": late_minutes,
-            "early_exit_minutes": early_exit_minutes,
-            "early_overtime_minutes": early_ot_minutes,
-            "overtime_minutes": total_overtime_minutes,
+            "early_exit_minutes": early_minutes,
+            "is_early_checkout": is_early_checkout,
+            "overtime_minutes": overtime_minutes,
             "is_late": is_late,
             "is_early_checkout": is_early_checkout,
             "is_overtime": is_overtime,
