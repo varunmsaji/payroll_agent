@@ -3,8 +3,9 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime, timezone, date
 
-from app.services.attendance.service import AttendanceService
-from app.services.attendance.exceptions import (
+
+from app.services.attendence.service import AttendanceService
+from app.services.attendence.exceptions import (
     AlreadyCheckedIn,
     NoActiveCheckIn,
     BreakAlreadyRunning,
@@ -32,7 +33,7 @@ def get_current_employee_id() -> int:
     - Session middleware
     - API key mapping
     """
-    return 1  # 🔴 replace in production
+    return 36  # 🔴 replace in production
 
 # -------------------------------------------------------------------
 # Schemas
