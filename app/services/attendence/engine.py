@@ -135,13 +135,16 @@ class AttendanceEngine:
             return 0, False
 
         shift_start = datetime.combine(dt, shift["start_time"])
+
         late_minutes = int((actual_in - shift_start).total_seconds() / 60)
 
-        return (
-            (late_minutes, True)
-            if late_minutes > self.policy.late_grace_minutes
-            else (0, False)
-        )
+        grace = shift.get("late_grace_minutes", 0)
+
+        if late_minutes > grace:
+            return late_minutes - grace, True
+
+        return 0, False
+
 
     def compute_early(self, shift, dt, actual_out):
         if not shift or not actual_out:
