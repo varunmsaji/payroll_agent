@@ -149,10 +149,21 @@ class AttendanceService:
         )
 
         # -------------------------------------------------
-        # Events
+        # 🔥 FIX: EXTEND EVENT FETCH WINDOW FOR OVERTIME
         # -------------------------------------------------
+        # We MUST include events AFTER shift end, otherwise
+        # late check-out is ignored and OT = 0
+        #
+        # 12 hours is safe for:
+        # - overtime
+        # - night shifts
+        # - manual corrections
+        extended_window_end = window_end + timedelta(hours=12)
+
         events = AttendanceEventDB.get_events_for_window(
-            employee_id, window_start, window_end
+            employee_id,
+            window_start,
+            extended_window_end,
         )
 
         # -------------------------------------------------
@@ -192,8 +203,11 @@ class AttendanceService:
         # -------------------------------------------------
         late_minutes, is_late = engine.compute_late(shift, dt, check_in)
         early_minutes, is_early_checkout = engine.compute_early(shift, dt, check_out)
+
         overtime_minutes, is_overtime = engine.compute_overtime(
-            check_out, window_end, late_minutes
+            check_out,
+            window_end,
+            late_minutes,
         )
 
         # -------------------------------------------------
@@ -202,7 +216,7 @@ class AttendanceService:
         status = engine.decide_status(net_hours, required_hours)
 
         # -------------------------------------------------
-        # Persist attendance (✅ FULL DB CONTRACT)
+        # Persist attendance
         # -------------------------------------------------
         return AttendanceDB.upsert_full_attendance({
             "employee_id": employee_id,
@@ -211,9 +225,7 @@ class AttendanceService:
             "check_in": check_in,
             "check_out": check_out,
 
-            # REQUIRED
             "total_hours": total_hours,
-
             "net_hours": net_hours,
             "break_minutes": int(break_sec / 60),
             "late_minutes": late_minutes,
@@ -229,6 +241,7 @@ class AttendanceService:
             "is_payroll_locked": False,
             "locked_at": None,
         })
+
 
     @classmethod
     def _get_shift_window(cls, shift, dt):
