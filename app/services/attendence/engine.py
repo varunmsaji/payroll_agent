@@ -57,7 +57,6 @@ class AttendanceEngine:
 
         return 0, False
 
-
     def compute_early(self, shift, dt, actual_out):
         if not shift or not actual_out:
             return 0, False
@@ -73,11 +72,14 @@ class AttendanceEngine:
 
         early_minutes = int((shift_end - actual_out).total_seconds() / 60)
 
-        return (
-            (early_minutes, True)
-            if early_minutes > self.policy.early_exit_grace_minutes
-            else (0, False)
-        )
+        grace = self.policy.early_exit_grace_minutes
+
+        if early_minutes > grace:
+            # ✅ subtract grace
+            return early_minutes - grace, True
+
+        return 0, False
+
 
     def compute_overtime(self, actual_out, shift_end, late_minutes):
         if not self.policy.overtime_enabled:
