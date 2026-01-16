@@ -28,6 +28,16 @@ router = APIRouter(prefix="/hrms", tags=["Employee Details"])
 class ManagerUpdate(BaseModel):
     manager_id: Optional[int] = None
 
+class EmployeeCreate(BaseModel):
+    first_name: str
+    last_name: str
+    email: EmailStr
+    phone: constr(min_length=10, max_length=15)
+    designation: str
+    department: str
+    date_of_joining: date
+    base_salary: float
+    manager_id: Optional[int] = None
 
 # ============================================================
 # ✅ 1️⃣ EMPLOYEE BASIC PROFILE
@@ -98,6 +108,19 @@ def assign_manager(employee_id: int, req: ManagerUpdate):
         "message": "Manager assigned successfully",
         "employee": updated
     }
+
+
+
+@router.post("/employee", status_code=201)
+def create_employee(payload: EmployeeCreate):
+    try:
+        employee = EmployeeDB.add_employee(payload.dict())
+        return {
+            "message": "Employee created successfully",
+            "employee": employee
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ============================================================

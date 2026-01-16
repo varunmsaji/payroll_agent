@@ -2,13 +2,13 @@
 
 from datetime import date
 from psycopg2.extras import RealDictCursor
+
 from app.database.connection import get_connection
 
 
 # ============================================================
 # ✅ PAYROLL DATABASE (FULL PERSISTENCE)
 # ============================================================
-
 class PayrollDB:
 
     @staticmethod
@@ -42,227 +42,214 @@ class PayrollDB:
 
         is_finalized: bool = False,
     ):
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    INSERT INTO payroll (
+                        employee_id,
+                        month,
+                        year,
 
-        cur.execute("""
-            INSERT INTO payroll (
-                employee_id,
-                month,
-                year,
+                        working_days,
+                        present_days,
+                        total_hours,
 
-                working_days,
-                present_days,
-                total_hours,
+                        gross_salary,
+                        net_salary,
 
-                gross_salary,
-                net_salary,
+                        basic_pay,
+                        hra_pay,
+                        allowances_pay,
 
-                basic_pay,
-                hra_pay,
-                allowances_pay,
+                        overtime_hours,
+                        overtime_pay,
 
-                overtime_hours,
-                overtime_pay,
+                        lop_days,
+                        lop_deduction,
 
-                lop_days,
-                lop_deduction,
+                        late_penalty,
+                        early_penalty,
 
-                late_penalty,
-                early_penalty,
+                        holiday_pay,
+                        night_shift_allowance,
 
-                holiday_pay,
-                night_shift_allowance,
+                        is_finalized,
+                        generated_at
+                    )
+                    VALUES (
+                        %s,%s,%s,
 
-                is_finalized,
-                generated_at
-            )
-            VALUES (
-                %s,%s,%s,
+                        %s,%s,%s,
 
-                %s,%s,%s,
+                        %s,%s,
 
-                %s,%s,
+                        %s,%s,%s,
 
-                %s,%s,%s,
+                        %s,%s,
 
-                %s,%s,
+                        %s,%s,
 
-                %s,%s,
+                        %s,%s,
 
-                %s,%s,
+                        %s,%s,
 
-                %s,%s,
+                        %s,
+                        NOW()
+                    )
+                    ON CONFLICT (employee_id, month, year)
+                    DO UPDATE SET
+                        working_days          = EXCLUDED.working_days,
+                        present_days          = EXCLUDED.present_days,
+                        total_hours           = EXCLUDED.total_hours,
 
-                %s,
-                NOW()
-            )
-            ON CONFLICT (employee_id, month, year)
-            DO UPDATE SET
+                        gross_salary          = EXCLUDED.gross_salary,
+                        net_salary            = EXCLUDED.net_salary,
 
-                working_days = EXCLUDED.working_days,
-                present_days = EXCLUDED.present_days,
-                total_hours = EXCLUDED.total_hours,
+                        basic_pay             = EXCLUDED.basic_pay,
+                        hra_pay               = EXCLUDED.hra_pay,
+                        allowances_pay        = EXCLUDED.allowances_pay,
 
-                gross_salary = EXCLUDED.gross_salary,
-                net_salary = EXCLUDED.net_salary,
+                        overtime_hours        = EXCLUDED.overtime_hours,
+                        overtime_pay          = EXCLUDED.overtime_pay,
 
-                basic_pay = EXCLUDED.basic_pay,
-                hra_pay = EXCLUDED.hra_pay,
-                allowances_pay = EXCLUDED.allowances_pay,
+                        lop_days               = EXCLUDED.lop_days,
+                        lop_deduction          = EXCLUDED.lop_deduction,
 
-                overtime_hours = EXCLUDED.overtime_hours,
-                overtime_pay = EXCLUDED.overtime_pay,
+                        late_penalty          = EXCLUDED.late_penalty,
+                        early_penalty         = EXCLUDED.early_penalty,
 
-                lop_days = EXCLUDED.lop_days,
-                lop_deduction = EXCLUDED.lop_deduction,
+                        holiday_pay           = EXCLUDED.holiday_pay,
+                        night_shift_allowance = EXCLUDED.night_shift_allowance,
 
-                late_penalty = EXCLUDED.late_penalty,
-                early_penalty = EXCLUDED.early_penalty,
+                        is_finalized          = EXCLUDED.is_finalized,
+                        generated_at          = NOW()
+                    RETURNING *;
+                    """,
+                    (
+                        employee_id,
+                        month,
+                        year,
 
-                holiday_pay = EXCLUDED.holiday_pay,
-                night_shift_allowance = EXCLUDED.night_shift_allowance,
+                        working_days,
+                        present_days,
+                        total_hours,
 
-                is_finalized = EXCLUDED.is_finalized,
-                generated_at = NOW()
+                        gross_salary,
+                        net_salary,
 
-            RETURNING *;
-        """, (
-            employee_id,
-            month,
-            year,
+                        basic_pay,
+                        hra_pay,
+                        allowances_pay,
 
-            working_days,
-            present_days,
-            total_hours,
+                        overtime_hours,
+                        overtime_pay,
 
-            gross_salary,
-            net_salary,
+                        lop_days,
+                        lop_deduction,
 
-            basic_pay,
-            hra_pay,
-            allowances_pay,
+                        late_penalty,
+                        early_penalty,
 
-            overtime_hours,
-            overtime_pay,
+                        holiday_pay,
+                        night_shift_allowance,
 
-            lop_days,
-            lop_deduction,
-
-            late_penalty,
-            early_penalty,
-
-            holiday_pay,
-            night_shift_allowance,
-
-            is_finalized
-        ))
-
-        row = cur.fetchone()
-        conn.commit()
-        cur.close()
-        conn.close()
-        return row
+                        is_finalized,
+                    ),
+                )
+                return cur.fetchone()
 
     @staticmethod
     def get_payroll(employee_id: int, month: int, year: int):
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        cur.execute("""
-            SELECT *
-            FROM payroll
-            WHERE employee_id = %s
-              AND month = %s
-              AND year = %s;
-        """, (employee_id, month, year))
-
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
-        return row
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT *
+                    FROM payroll
+                    WHERE employee_id = %s
+                      AND month = %s
+                      AND year = %s;
+                    """,
+                    (employee_id, month, year),
+                )
+                return cur.fetchone()
 
     @staticmethod
     def lock_attendance_for_period(employee_id: int, start_date: date, end_date: date):
-        conn = get_connection()
-        cur = conn.cursor()
-
-        cur.execute("""
-            UPDATE attendance
-            SET
-                is_payroll_locked = TRUE,
-                locked_at = NOW()
-            WHERE employee_id = %s
-              AND date BETWEEN %s AND %s;
-        """, (employee_id, start_date, end_date))
-
-        conn.commit()
-        cur.close()
-        conn.close()
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE attendance
+                    SET
+                        is_payroll_locked = TRUE,
+                        locked_at = NOW()
+                    WHERE employee_id = %s
+                      AND date BETWEEN %s AND %s;
+                    """,
+                    (employee_id, start_date, end_date),
+                )
         return True
 
 
 # ============================================================
 # ✅ PAYROLL POLICY DATABASE (ADMIN CONTROL)
 # ============================================================
-
 class PayrollPolicyDB:
 
     @staticmethod
     def get_active_policy():
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        cur.execute("""
-            SELECT *
-            FROM payroll_policies
-            WHERE active = TRUE
-            ORDER BY created_at DESC
-            LIMIT 1;
-        """)
-
-        policy = cur.fetchone()
-        cur.close()
-        conn.close()
-        return policy
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT *
+                    FROM payroll_policies
+                    WHERE active = TRUE
+                    ORDER BY created_at DESC
+                    LIMIT 1;
+                    """
+                )
+                return cur.fetchone()
 
     @staticmethod
     def update_policy(data: dict):
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
 
-        cur.execute("UPDATE payroll_policies SET active = FALSE;")
+                # Deactivate existing policies
+                cur.execute("UPDATE payroll_policies SET active = FALSE;")
 
-        cur.execute("""
-            INSERT INTO payroll_policies (
-                late_grace_minutes,
-                late_lop_threshold_minutes,
-                early_exit_grace_minutes,
-                early_exit_lop_threshold_minutes,
-                overtime_enabled,
-                overtime_multiplier,
-                holiday_double_pay,
-                weekend_paid_only_if_worked,
-                night_shift_allowance,
-                active
-            )
-            VALUES (
-                %(late_grace_minutes)s,
-                %(late_lop_threshold_minutes)s,
-                %(early_exit_grace_minutes)s,
-                %(early_exit_lop_threshold_minutes)s,
-                %(overtime_enabled)s,
-                %(overtime_multiplier)s,
-                %(holiday_double_pay)s,
-                %(weekend_paid_only_if_worked)s,
-                %(night_shift_allowance)s,
-                TRUE
-            )
-            RETURNING *;
-        """, data)
-
-        policy = cur.fetchone()
-        conn.commit()
-        cur.close()
-        conn.close()
-        return policy
+                # Insert new active policy
+                cur.execute(
+                    """
+                    INSERT INTO payroll_policies (
+                        late_grace_minutes,
+                        late_lop_threshold_minutes,
+                        early_exit_grace_minutes,
+                        early_exit_lop_threshold_minutes,
+                        overtime_enabled,
+                        overtime_multiplier,
+                        holiday_double_pay,
+                        weekend_paid_only_if_worked,
+                        night_shift_allowance,
+                        active
+                    )
+                    VALUES (
+                        %(late_grace_minutes)s,
+                        %(late_lop_threshold_minutes)s,
+                        %(early_exit_grace_minutes)s,
+                        %(early_exit_lop_threshold_minutes)s,
+                        %(overtime_enabled)s,
+                        %(overtime_multiplier)s,
+                        %(holiday_double_pay)s,
+                        %(weekend_paid_only_if_worked)s,
+                        %(night_shift_allowance)s,
+                        TRUE
+                    )
+                    RETURNING *;
+                    """,
+                    data,
+                )
+                return cur.fetchone()
