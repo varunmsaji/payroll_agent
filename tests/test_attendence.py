@@ -1,3 +1,4 @@
+import os
 import requests
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -11,18 +12,21 @@ BASE_URL = "http://localhost:8000"
 EMPLOYEE_ID = 36
 DATE = "2026-01-11"
 
-# 🔐 SUPABASE DATABASE URL (DIRECT)
-DATABASE_URL = 'postgresql://postgres:t3dPZJwoCApEGgBU@db.fmhhqmmntpnxxqvnffej.supabase.co:5432/postgres'
+DATABASE_URL = DATABASE_URL = 'postgresql://postgres:t3dPZJwoCApEGgBU@db.fmhhqmmntpnxxqvnffej.supabase.co:5432/postgres'
 
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is not set")
+
+USE_SSL = "supabase.co" in DATABASE_URL
 
 # =====================================================
-# DB HELPERS (SUPABASE)
+# DB HELPERS (LOCAL + SUPABASE)
 # =====================================================
 def get_conn():
     return psycopg2.connect(
         DATABASE_URL,
         cursor_factory=RealDictCursor,
-        sslmode="require",  # ✅ REQUIRED for Supabase
+        sslmode="require" if USE_SSL else "disable",
     )
 
 
@@ -91,7 +95,7 @@ def fetch_attendance():
             return cur.fetchone()
 
 # =====================================================
-# API CALLER (DETERMINISTIC TIME)
+# API CALLER
 # =====================================================
 ENDPOINTS = {
     "check_in": "/attendance/check-in",
@@ -102,9 +106,6 @@ ENDPOINTS = {
 
 
 def call_api(action: str, fake_time: str):
-    """
-    Inject deterministic server time via query param (?now=)
-    """
     ts = datetime.fromisoformat(f"{DATE}T{fake_time}").replace(
         tzinfo=timezone.utc
     )
@@ -179,7 +180,7 @@ SCENARIOS = [
 # RUNNER
 # =====================================================
 def run():
-    print("\n🚀 STARTING SUPABASE ATTENDANCE TESTS\n")
+    print("\n🚀 STARTING ATTENDANCE TESTS\n")
 
     fetch_shift()
     fetch_policy(datetime.fromisoformat(DATE))
