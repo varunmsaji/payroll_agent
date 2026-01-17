@@ -100,6 +100,47 @@ class AttendanceDB:
         Stores ALL payroll-required columns.
         Respects payroll lock.
         """
+
+        # ✅ Normalize missing keys (CRITICAL)
+        REQUIRED_KEYS = [
+            "employee_id",
+            "shift_id",
+            "date",
+            "check_in",
+            "check_out",
+            "total_hours",
+            "net_hours",
+            "break_minutes",
+            "overtime_minutes",
+            "late_minutes",
+            "early_exit_minutes",
+            "is_late",
+            "is_early_checkout",
+            "is_overtime",
+            "is_weekend",
+            "is_holiday",
+            "is_night_shift",
+            "status",
+            "is_payroll_locked",
+            "locked_at",
+        ]
+
+        for key in REQUIRED_KEYS:
+            data.setdefault(key, None)
+
+        # Sensible defaults (optional but recommended)
+        data.setdefault("break_minutes", 0)
+        data.setdefault("overtime_minutes", 0)
+        data.setdefault("late_minutes", 0)
+        data.setdefault("early_exit_minutes", 0)
+        data.setdefault("is_late", False)
+        data.setdefault("is_early_checkout", False)
+        data.setdefault("is_overtime", False)
+        data.setdefault("is_weekend", False)
+        data.setdefault("is_holiday", False)
+        data.setdefault("is_night_shift", False)
+        data.setdefault("is_payroll_locked", False)
+
         with get_connection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(
@@ -172,6 +213,7 @@ class AttendanceDB:
                     data,
                 )
                 return cur.fetchone()
+
 
     @staticmethod
     def get_attendance_range(employee_id: int, start_date: date, end_date: date):

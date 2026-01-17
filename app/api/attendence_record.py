@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone, date
-
 
 from app.services.attendence.service import AttendanceService
 from app.services.attendence.exceptions import (
@@ -19,24 +18,35 @@ router = APIRouter(
 )
 
 # -------------------------------------------------------------------
-# Dependencies
+# ✅ TIME DEPENDENCY (FIXED)
 # -------------------------------------------------------------------
 
-def utc_now() -> datetime:
-    """Single source of truth for server time"""
+def get_now(
+    now: Optional[datetime] = Query(None),
+) -> datetime:
+    """
+    Unified server time.
+    - Uses ?now= (for tests)
+    - Falls back to real UTC time (for prod)
+    """
+    if now:
+        if now.tzinfo is None:
+            return now.replace(tzinfo=timezone.utc)
+        return now
     return datetime.now(timezone.utc)
+
+# -------------------------------------------------------------------
+# ⚠️ TEMP EMPLOYEE DEPENDENCY
+# -------------------------------------------------------------------
 
 def get_current_employee_id() -> int:
     """
-    Replace this with:
-    - JWT extraction
-    - Session middleware
-    - API key mapping
+    Replace later with JWT / session logic
     """
-    return 36  # 🔴 replace in production
+    return 36
 
 # -------------------------------------------------------------------
-# Schemas
+# RESPONSE SCHEMAS
 # -------------------------------------------------------------------
 
 class AttendanceActionResponse(BaseModel):
@@ -65,14 +75,14 @@ class AttendanceSummaryResponse(BaseModel):
     is_night_shift: bool
 
 # -------------------------------------------------------------------
-# Action Endpoints
+# ACTION ENDPOINTS
 # -------------------------------------------------------------------
 
 @router.post("/check-in", response_model=AttendanceActionResponse)
 def check_in(
     source: str = "api",
     employee_id: int = Depends(get_current_employee_id),
-    now: datetime = Depends(utc_now),
+    now: datetime = Depends(get_now),  # ✅ FIXED
 ):
     try:
         ev = AttendanceService.check_in(
@@ -98,7 +108,7 @@ def check_in(
 def check_out(
     source: str = "api",
     employee_id: int = Depends(get_current_employee_id),
-    now: datetime = Depends(utc_now),
+    now: datetime = Depends(get_now),  # ✅ FIXED
 ):
     try:
         ev = AttendanceService.check_out(
@@ -124,7 +134,7 @@ def check_out(
 def break_start(
     source: str = "api",
     employee_id: int = Depends(get_current_employee_id),
-    now: datetime = Depends(utc_now),
+    now: datetime = Depends(get_now),  # ✅ FIXED
 ):
     try:
         ev = AttendanceService.break_start(
@@ -150,7 +160,7 @@ def break_start(
 def break_end(
     source: str = "api",
     employee_id: int = Depends(get_current_employee_id),
-    now: datetime = Depends(utc_now),
+    now: datetime = Depends(get_now),  # ✅ FIXED
 ):
     try:
         ev = AttendanceService.break_end(
@@ -169,7 +179,7 @@ def break_end(
         raise HTTPException(status_code=400, detail="No active break")
 
 # -------------------------------------------------------------------
-# Read Endpoint
+# READ ENDPOINT
 # -------------------------------------------------------------------
 
 @router.get(

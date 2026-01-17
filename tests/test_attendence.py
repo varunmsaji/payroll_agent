@@ -11,19 +11,19 @@ BASE_URL = "http://localhost:8000"
 EMPLOYEE_ID = 36
 DATE = "2026-01-11"
 
-DB_CONFIG = {
-    "dbname": "hrms_db",
-    "user": "varun",
-    "password": "varun@123",
-    "host": "localhost",
-    "port": 5432,
-}
+# 🔐 SUPABASE DATABASE URL (DIRECT)
+DATABASE_URL = 'postgresql://postgres:t3dPZJwoCApEGgBU@db.fmhhqmmntpnxxqvnffej.supabase.co:5432/postgres'
+
 
 # =====================================================
-# DB HELPERS
+# DB HELPERS (SUPABASE)
 # =====================================================
 def get_conn():
-    return psycopg2.connect(**DB_CONFIG)
+    return psycopg2.connect(
+        DATABASE_URL,
+        cursor_factory=RealDictCursor,
+        sslmode="require",  # ✅ REQUIRED for Supabase
+    )
 
 
 def clear_attendance():
@@ -36,32 +36,32 @@ def clear_attendance():
                 """,
                 (EMPLOYEE_ID, EMPLOYEE_ID),
             )
-    print("🧹 DB cleaned")
+    print("🧹 Attendance cleared")
 
 
 def fetch_shift():
     with get_conn() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT s.*
                 FROM shifts s
                 JOIN employee_shifts es ON es.shift_id = s.shift_id
                 WHERE es.employee_id = %s
-                  AND s.is_active = true
+                ORDER BY es.effective_from DESC
                 LIMIT 1;
                 """,
                 (EMPLOYEE_ID,),
             )
             shift = cur.fetchone()
             if not shift:
-                raise RuntimeError("No active shift found")
+                raise RuntimeError("❌ No active shift found")
             return shift
 
 
 def fetch_policy(dt):
     with get_conn() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT *
@@ -77,15 +77,21 @@ def fetch_policy(dt):
 
 def fetch_attendance():
     with get_conn() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor() as cur:
             cur.execute(
-                "SELECT * FROM attendance WHERE employee_id = %s;",
+                """
+                SELECT *
+                FROM attendance
+                WHERE employee_id = %s
+                ORDER BY date DESC
+                LIMIT 1;
+                """,
                 (EMPLOYEE_ID,),
             )
             return cur.fetchone()
 
 # =====================================================
-# API CALLER (EXPLICIT EVENTS)
+# API CALLER (DETERMINISTIC TIME)
 # =====================================================
 ENDPOINTS = {
     "check_in": "/attendance/check-in",
@@ -97,7 +103,7 @@ ENDPOINTS = {
 
 def call_api(action: str, fake_time: str):
     """
-    Inject deterministic server time via header
+    Inject deterministic server time via query param (?now=)
     """
     ts = datetime.fromisoformat(f"{DATE}T{fake_time}").replace(
         tzinfo=timezone.utc
@@ -105,15 +111,13 @@ def call_api(action: str, fake_time: str):
 
     r = requests.post(
         f"{BASE_URL}{ENDPOINTS[action]}",
-        headers={
-            "X-Fake-Time": ts.isoformat()  # 👈 use middleware or dependency
-        },
+        params={"now": ts.isoformat()},
         timeout=10,
     )
     return r.status_code
 
 # =====================================================
-# SCENARIOS (EXPLICIT ACTIONS)
+# SCENARIOS
 # =====================================================
 SCENARIOS = [
     {
@@ -124,7 +128,6 @@ SCENARIOS = [
             ("break_end", "14:00"),
             ("check_out", "18:00"),
         ],
-        "status": "present",
     },
     {
         "title": "LATE ARRIVAL (12 MIN)",
@@ -134,8 +137,6 @@ SCENARIOS = [
             ("break_end", "14:00"),
             ("check_out", "18:00"),
         ],
-        "late_arrival_minutes": 12,
-        "status": "present",
     },
     {
         "title": "EARLY EXIT (20 MIN)",
@@ -145,8 +146,6 @@ SCENARIOS = [
             ("break_end", "14:00"),
             ("check_out", "17:40"),
         ],
-        "early_exit_minutes": 20,
-        "status": "present",
     },
     {
         "title": "LONG BREAK (90 MIN)",
@@ -156,8 +155,6 @@ SCENARIOS = [
             ("break_end", "14:30"),
             ("check_out", "18:00"),
         ],
-        "break_minutes": 90,
-        "status": "present",
     },
     {
         "title": "NO BREAK END",
@@ -166,7 +163,6 @@ SCENARIOS = [
             ("break_start", "13:00"),
             ("check_out", "18:00"),
         ],
-        "status": "short_hours",
     },
     {
         "title": "OVERTIME (1 HOUR)",
@@ -176,8 +172,6 @@ SCENARIOS = [
             ("break_end", "14:00"),
             ("check_out", "19:00"),
         ],
-        "expect_overtime": True,
-        "status": "present",
     },
 ]
 
@@ -185,10 +179,10 @@ SCENARIOS = [
 # RUNNER
 # =====================================================
 def run():
-    print("\n🚀 STARTING ATTENDANCE SCENARIO TESTS\n")
+    print("\n🚀 STARTING SUPABASE ATTENDANCE TESTS\n")
 
-    shift = fetch_shift()
-    policy = fetch_policy(datetime.fromisoformat(DATE))
+    fetch_shift()
+    fetch_policy(datetime.fromisoformat(DATE))
 
     passed = failed = 0
 
@@ -201,11 +195,11 @@ def run():
         for action, t in s["events"]:
             code = call_api(action, t)
             print(f"{action:12} @ {t} → HTTP {code}")
-            time.sleep(0.1)
+            time.sleep(0.15)
 
         row = fetch_attendance()
         if not row:
-            print("❌ No attendance row")
+            print("❌ No attendance row created")
             failed += 1
             continue
 
@@ -220,7 +214,7 @@ def run():
             "overtime_minutes",
             "status",
         ]:
-            print(f"  {k:18}: {row.get(k)}")
+            print(f"  {k:20}: {row.get(k)}")
 
         passed += 1
 
