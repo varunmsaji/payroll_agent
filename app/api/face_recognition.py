@@ -9,9 +9,9 @@ from app.database.attendence import AttendanceEventDB, ShiftDB
 
 router = APIRouter(prefix="/faces", tags=["Face Attendance"])
 
-COMPRE_FACE_URL = "http://localhost:8001"
-API_KEY = "788f96a2-f526-4ab0-83b1-2e8cecaa520b"
-COLLECTION_ID = "b2f6dbb6-eca2-4472-a858-ac9cc67d4e34"
+COMPRE_FACE_URL = os.getenv("COMPRE_FACE_URL")  
+API_KEY = os.getenv("FACE_API_KEY")
+COLLECTION_ID = os.getenv("COLLECTION_ID")
 
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_SIZE_BYTES = 5 * 1024 * 1024

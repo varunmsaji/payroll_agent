@@ -1,22 +1,10 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
-
+from connection import get_connection
 # ============================================================
 # DATABASE CONFIG
 # ============================================================
-DB_PARAMS = {
-    "dbname": "hrms_db",
-    "user": "varun",
-    "password": "varun@123",
-    "host": "localhost",
-    "port": 5432,
-}
 
-# ============================================================
-# CONNECTOR
-# ============================================================
-def get_connection():
-    return psycopg2.connect(**DB_PARAMS)
 
 # ============================================================
 # CREATE ALL TABLES
