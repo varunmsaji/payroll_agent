@@ -1,118 +1,213 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form
-from typing import Optional
 from datetime import datetime
+from typing import Optional, Dict, Any
 import httpx
+import os
 
 from app.services.attendence import AttendanceService
 from app.services.attendence.exceptions import AttendanceError
-from app.database.attendence import AttendanceEventDB, ShiftDB
-from dotenv import load_dotenv
-import os   
-
-load_dotenv()
 
 router = APIRouter(prefix="/faces", tags=["Face Attendance"])
 
-COMPRE_FACE_URL = os.getenv("COMPRE_FACE_URL")  
+# =====================================================
+# ENV CONFIG
+# =====================================================
+COMPRE_FACE_URL = os.getenv("COMPRE_FACE_URL", "http://localhost:8000")
 API_KEY = os.getenv("FACE_API_KEY")
-COLLECTION_ID = os.getenv("COLLECTION_ID")
+COLLECTION_ID = os.getenv("COLLECTION_ID", "employees")
 
+if not API_KEY:
+    raise RuntimeError("FACE_API_KEY not set")
+
+# =====================================================
+# CONSTANTS
+# =====================================================
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
-MAX_SIZE_BYTES = 5 * 1024 * 1024
+MAX_SIZE_BYTES = 5 * 1024 * 1024  # 5MB
+
+MIN_MATCH_CONFIDENCE = 0.85
 
 
-async def validate_image(upload: UploadFile) -> bytes:
-    if upload.content_type not in ALLOWED_TYPES:
-        raise HTTPException(400, "Unsupported image type")
+# =====================================================
+# UTILS
+# =====================================================
+def validate_image(file: UploadFile) -> bytes:
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(400, "Invalid image type")
 
-    data = await upload.read()
-    if len(data) > MAX_SIZE_BYTES:
+    contents = file.file.read()
+
+    if len(contents) > MAX_SIZE_BYTES:
         raise HTTPException(400, "Image too large")
 
-    return data
+    file.file.seek(0)
+    return contents
 
 
-@router.post("/attendance")
-async def face_attendance(
-    image: UploadFile = File(...),
-    latitude: Optional[float] = Form(None),
-    longitude: Optional[float] = Form(None),
+def compreface_headers() -> Dict[str, str]:
+    return {"x-api-key": API_KEY}
+
+
+def compreface_file(file: UploadFile, image_bytes: bytes):
+    return {
+        "file": (
+            file.filename,
+            image_bytes,
+            file.content_type,
+        )
+    }
+
+@router.post("/register")
+async def register_face(
+    employee_id: int = Form(...),
+    file: UploadFile = File(...),
 ):
-    image_bytes = await validate_image(image)
+    image_bytes = validate_image(file)
 
-    recognize_url = (
-        f"{COMPRE_FACE_URL}/api/v1/recognition/recognize"
-        f"?collection_id={COLLECTION_ID}&limit=1"
-    )
+    url = f"{COMPRE_FACE_URL}/api/v1/recognition/faces"
+    params = {
+        "subject": str(employee_id),
+        "collectionId": COLLECTION_ID,
+    }
 
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.post(
-            recognize_url,
-            headers={"x-api-key": API_KEY},
-            files={"file": (image.filename, image_bytes, image.content_type)},
+            url,
+            headers=compreface_headers(),
+            params=params,
+            files={
+                "file": (
+                    file.filename,
+                    image_bytes,
+                    file.content_type,
+                )
+            },
+        )
+
+    if resp.status_code not in (200, 201):
+        raise HTTPException(500, f"CompreFace error: {resp.text}")
+
+    data = resp.json()
+
+    # ✅ Handle BOTH CompreFace success formats
+    if "faces" in data:
+        faces_count = len(data["faces"])
+    elif "image_id" in data:
+        faces_count = 1
+    else:
+        raise HTTPException(400, "Invalid CompreFace response")
+
+    if faces_count != 1:
+        raise HTTPException(400, "Exactly one face must be present")
+
+    return {
+        "success": True,
+        "employee_id": employee_id,
+        "message": "Face registered successfully",
+        "image_id": data.get("image_id"),
+    }
+
+
+
+# =====================================================
+# 2️⃣ VERIFY FACE (RECOGNITION ONLY)
+# =====================================================
+@router.post("/verify")
+async def verify_face(
+    file: UploadFile = File(...),
+):
+    """
+    Verify face and return matched employee_id
+    """
+    image_bytes = validate_image(file)
+
+    url = f"{COMPRE_FACE_URL}/api/v1/recognition/recognize"
+    params = {"collectionId": COLLECTION_ID}
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.post(
+            url,
+            headers=compreface_headers(),
+            params=params,
+            files=compreface_file(file, image_bytes),
         )
 
     if resp.status_code != 200:
-        raise HTTPException(resp.status_code, resp.text)
+        raise HTTPException(500, f"CompreFace error: {resp.text}")
 
-    results = resp.json().get("result", [])
-    if not results:
-        return {"recognized": False, "message": "Face not recognized"}
+    data = resp.json()
+    results = data.get("result", [])
 
-    employee_id = int(results[0]["subjects"][0]["subject"])
+    if not results or not results[0].get("subjects"):
+        raise HTTPException(401, "Face not recognized")
 
-    now = datetime.utcnow()
-    today = now.date()
+    subject = results[0]["subjects"][0]
 
-    shift = ShiftDB.get_employee_shift(employee_id, today)
-    window_start, _, _, _, _ = AttendanceService._get_shift_window(shift, today)
-
-    events = AttendanceEventDB.get_events_for_window(
-        employee_id, window_start, now
-    )
-
-    meta = {
-        "latitude": latitude,
-        "longitude": longitude,
-        "method": "face",
+    return {
+        "employee_id": int(subject["subject"]),
+        "confidence": subject["similarity"],
     }
 
+
+# =====================================================
+# 3️⃣ FACE ATTENDANCE PUNCH (END-TO-END)
+# =====================================================
+@router.post("/punch")
+async def face_punch(
+    file: UploadFile = File(...),
+):
+    """
+    Full flow:
+    - Verify face
+    - Mark attendance
+    """
+    image_bytes = validate_image(file)
+
+    # --- Face recognition ---
+    url = f"{COMPRE_FACE_URL}/api/v1/recognition/recognize"
+    params = {"collectionId": COLLECTION_ID}
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.post(
+            url,
+            headers=compreface_headers(),
+            params=params,
+            files=compreface_file(file, image_bytes),
+        )
+
+    if resp.status_code != 200:
+        raise HTTPException(500, f"CompreFace error: {resp.text}")
+
+    data = resp.json()
+    results = data.get("result", [])
+
+    if not results or not results[0].get("subjects"):
+        raise HTTPException(401, "Face not recognized")
+
+    subject = results[0]["subjects"][0]
+    employee_id = int(subject["subject"])
+    confidence = subject["similarity"]
+
+    if confidence < MIN_MATCH_CONFIDENCE:
+        raise HTTPException(401, "Face confidence too low")
+
+    # --- Attendance punch ---
     try:
-        if not events:
-            action = "check_in"
-            event = AttendanceService.check_in(
-                employee_id, source="face", meta=meta, now=now
-            )
-
-        else:
-            last = events[-1]["event_type"]
-
-            if last == "check_in":
-                action = "break_start"
-                event = AttendanceService.break_start(
-                    employee_id, source="face", meta=meta, now=now
-                )
-
-            elif last == "break_start":
-                action = "break_end"
-                event = AttendanceService.break_end(
-                    employee_id, source="face", meta=meta, now=now
-                )
-
-            else:
-                action = "check_out"
-                event = AttendanceService.check_out(
-                    employee_id, source="face", meta=meta, now=now
-                )
-
+        attendance = AttendanceService.process_punch(
+            employee_id=employee_id,
+            event_time=datetime.utcnow(),
+            source="face",
+            meta={
+                "confidence": confidence,
+                "device": "face_scanner",
+            },
+        )
     except AttendanceError as e:
         raise HTTPException(400, str(e))
 
     return {
-        "recognized": True,
+        "success": True,
         "employee_id": employee_id,
-        "action": action,
-        "attendance_event": event,
-        "timestamp": now.isoformat(),
-        "location": meta,
+        "confidence": confidence,
+        "attendance": attendance,
     }
