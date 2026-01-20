@@ -52,12 +52,8 @@ def mark_attendance(payload: PunchRequest):
     BIOMETRIC / FACE SCANNER ENTRY POINT
     """
 
-    print("\n================= API /attendance/punch =================")
-    print("RAW payload:", payload.dict())
-
     try:
         event_time = payload.event_time or datetime.utcnow()
-        print("Resolved event_time:", event_time)
 
         meta = {
             "device_id": payload.device_id,
@@ -68,46 +64,34 @@ def mark_attendance(payload: PunchRequest):
         if payload.extra:
             meta.update(payload.extra)
 
-        print("Meta passed to service:", meta)
-
-        print("→ Calling AttendanceService.process_punch()")
         result = AttendanceService.process_punch(
             employee_id=payload.employee_id,
             event_time=event_time,
             source="biometric",
             meta=meta,
         )
-        print("← Service returned:", result)
 
         # Duplicate / ignored punch
         if isinstance(result, dict) and result.get("ignored"):
-            print("⚠ Punch ignored:", result.get("reason"))
             return PunchResponse(
                 success=True,
                 ignored=True,
                 reason=result.get("reason"),
             )
 
-        response = PunchResponse(
+        return PunchResponse(
             success=True,
             action=result["action"],
             event=result["event"],
         )
 
-        print("✓ API response:", response.dict())
-        print("================= END API /attendance/punch =================\n")
-
-        return response
-
     except AttendanceException as e:
-        print("❌ AttendanceException:", str(e))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
 
-    except Exception as e:
-        print("🔥 UNHANDLED EXCEPTION IN API:", repr(e))
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to mark attendance",

@@ -27,66 +27,45 @@ class AttendanceService:
         source: str = "biometric",
         meta: Optional[Dict[str, Any]] = None,
     ):
-        print("\n================= PROCESS_PUNCH =================")
-        print("employee_id:", employee_id)
-        print("event_time :", event_time)
-        print("meta       :", meta)
-
         meta = meta or {}
         dt = event_time.date()
 
         # -------------------------------------------------
         # Duplicate punch protection
         # -------------------------------------------------
-        print("→ Checking duplicate punch")
         if AttendanceEventDB.exists_recent_event(
             employee_id=employee_id,
             event_time=event_time,
             seconds=30,
         ):
-            print("⚠ DUPLICATE punch detected")
             return {"ignored": True, "reason": "duplicate_punch"}
 
         # -------------------------------------------------
-        # Load policy (for late/OT etc.)
+        # Load policy & shift
         # -------------------------------------------------
         policy = AttendancePolicyDB.get_policy_for_date(dt)
-        print("→ Policy loaded:", policy)
-
-        # -------------------------------------------------
-        # Load shift (for break logic)
-        # -------------------------------------------------
         shift = ShiftDB.get_employee_shift(employee_id, dt)
-        print("→ Shift loaded:", shift)
 
         # -------------------------------------------------
         # Face confidence validation
         # -------------------------------------------------
         confidence = meta.get("confidence")
-        print("→ Face confidence:", confidence)
-
         if confidence is not None:
             min_conf = getattr(policy, "min_face_confidence", None)
-            print("→ Min required confidence:", min_conf)
             if min_conf and confidence < min_conf:
-                print("❌ Face rejected")
                 raise AttendanceRejected("Face confidence too low")
 
         # -------------------------------------------------
-        # Fetch current session events
+        # Fetch session events
         # -------------------------------------------------
-        print("→ Fetching session events")
         events = cls._get_session_events(employee_id, dt)
-
-        print(f"→ Session events count: {len(events)}")
-        for ev in events:
-            print("   EVENT:", ev["event_type"], ev["event_time"])
-
         state = cls._derive_state(events)
-        print("→ Derived state:", state)
+
+        # Did a break already happen today?
+        had_break = any(ev["event_type"] == "break_start" for ev in events)
 
         # -------------------------------------------------
-        # Decide intent (FIXED LOGIC)
+        # ✅ CORRECT IMPLICIT BIOMETRIC LOGIC
         # -------------------------------------------------
         if not state["checked_in"]:
             action = "check_in"
@@ -94,18 +73,15 @@ class AttendanceService:
         elif state["on_break"]:
             action = "break_end"
 
-        elif shift and shift.get("break_required"):
+        elif shift and shift.get("break_required") and not had_break:
             action = "break_start"
 
         else:
             action = "check_out"
 
-        print("→ Decided action:", action)
-
         # -------------------------------------------------
-        # Insert semantic event
+        # Insert event
         # -------------------------------------------------
-        print("→ Inserting event into DB")
         event = AttendanceEventDB.add_event(
             employee_id=employee_id,
             event_type=action,
@@ -113,16 +89,11 @@ class AttendanceService:
             meta=meta,
             event_time=event_time,
         )
-        print("✓ Event inserted:", event)
 
         # -------------------------------------------------
         # Recalculate attendance
         # -------------------------------------------------
-        print("→ Recalculating attendance")
         cls.recalculate_for_date(employee_id, dt)
-        print("✓ Recalculation done")
-
-        print("================= END PROCESS_PUNCH =================\n")
 
         return {
             "action": action,
@@ -130,7 +101,8 @@ class AttendanceService:
         }
 
 
-    # =========================================================
+
+        # =========================================================
     # INTERNAL HELPERS
     # =========================================================
     @classmethod
