@@ -1,16 +1,20 @@
 import os
+from pathlib import Path
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
-import os
 
-load_dotenv()
+# Get the project root directory (3 levels up from this file)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+ENV_PATH = PROJECT_ROOT / '.env'
+
+load_dotenv(dotenv_path=ENV_PATH)
 
 # --------------------------------------------------
 # DATABASE CONFIG
 # --------------------------------------------------
 
-DATABASE_URL = 'postgresql://postgres.fmhhqmmntpnxxqvnffej:t3dPZJwoCApEGgBU@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres'
+DATABASE_URL = os.getenv('DATABASE_URL')
 
 
 if not DATABASE_URL:
