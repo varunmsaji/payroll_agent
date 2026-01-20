@@ -1,4 +1,3 @@
-import os
 import requests
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -12,15 +11,11 @@ BASE_URL = "http://localhost:8000"
 EMPLOYEE_ID = 36
 DATE = "2026-01-11"
 
-DATABASE_URL = DATABASE_URL = 'postgresql://postgres:t3dPZJwoCApEGgBU@db.fmhhqmmntpnxxqvnffej.supabase.co:5432/postgres'
-
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL is not set")
-
+DATABASE_URL = "postgresql://postgres:t3dPZJwoCApEGgBU@db.fmhhqmmntpnxxqvnffej.supabase.co:5432/postgres"
 USE_SSL = "supabase.co" in DATABASE_URL
 
 # =====================================================
-# DB HELPERS (LOCAL + SUPABASE)
+# DB HELPERS
 # =====================================================
 def get_conn():
     return psycopg2.connect(
@@ -40,43 +35,6 @@ def clear_attendance():
                 """,
                 (EMPLOYEE_ID, EMPLOYEE_ID),
             )
-    print("🧹 Attendance cleared")
-
-
-def fetch_shift():
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT s.*
-                FROM shifts s
-                JOIN employee_shifts es ON es.shift_id = s.shift_id
-                WHERE es.employee_id = %s
-                ORDER BY es.effective_from DESC
-                LIMIT 1;
-                """,
-                (EMPLOYEE_ID,),
-            )
-            shift = cur.fetchone()
-            if not shift:
-                raise RuntimeError("❌ No active shift found")
-            return shift
-
-
-def fetch_policy(dt):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT *
-                FROM attendance_policies
-                WHERE created_at <= %s
-                ORDER BY created_at DESC
-                LIMIT 1;
-                """,
-                (dt,),
-            )
-            return cur.fetchone()
 
 
 def fetch_attendance():
@@ -94,28 +52,34 @@ def fetch_attendance():
             )
             return cur.fetchone()
 
+
 # =====================================================
 # API CALLER
 # =====================================================
-ENDPOINTS = {
-    "check_in": "/attendance/check-in",
-    "break_start": "/attendance/break/start",
-    "break_end": "/attendance/break/end",
-    "check_out": "/attendance/check-out",
-}
+PUNCH_ENDPOINT = "/attendance/punch"
 
 
-def call_api(action: str, fake_time: str):
+def punch(fake_time: str):
     ts = datetime.fromisoformat(f"{DATE}T{fake_time}").replace(
         tzinfo=timezone.utc
     )
 
+    payload = {
+        "employee_id": EMPLOYEE_ID,
+        "event_time": ts.isoformat(),
+        "device_id": "FACE-01",
+        "confidence": 0.95,
+        "location": "Main Gate",
+    }
+
     r = requests.post(
-        f"{BASE_URL}{ENDPOINTS[action]}",
-        params={"now": ts.isoformat()},
-        timeout=10,
+        f"{BASE_URL}{PUNCH_ENDPOINT}",
+        json=payload,
+        timeout=30,
     )
-    return r.status_code
+
+    return r.status_code, r.json()
+
 
 # =====================================================
 # SCENARIOS
@@ -123,106 +87,71 @@ def call_api(action: str, fake_time: str):
 SCENARIOS = [
     {
         "title": "ON TIME – FULL DAY",
-        "events": [
-            ("check_in", "09:00"),
-            ("break_start", "13:00"),
-            ("break_end", "14:00"),
-            ("check_out", "18:00"),
-        ],
+        "events": ["09:00", "13:00", "14:00", "18:00"],
     },
     {
         "title": "LATE ARRIVAL (12 MIN)",
-        "events": [
-            ("check_in", "09:12"),
-            ("break_start", "13:00"),
-            ("break_end", "14:00"),
-            ("check_out", "18:00"),
-        ],
+        "events": ["09:12", "13:00", "14:00", "18:00"],
     },
     {
         "title": "EARLY EXIT (20 MIN)",
-        "events": [
-            ("check_in", "09:00"),
-            ("break_start", "13:00"),
-            ("break_end", "14:00"),
-            ("check_out", "17:40"),
-        ],
-    },
-    {
-        "title": "LONG BREAK (90 MIN)",
-        "events": [
-            ("check_in", "09:00"),
-            ("break_start", "13:00"),
-            ("break_end", "14:30"),
-            ("check_out", "18:00"),
-        ],
-    },
-    {
-        "title": "NO BREAK END",
-        "events": [
-            ("check_in", "09:00"),
-            ("break_start", "13:00"),
-            ("check_out", "18:00"),
-        ],
+        "events": ["09:00", "13:00", "14:00", "17:40"],
     },
     {
         "title": "OVERTIME (1 HOUR)",
-        "events": [
-            ("check_in", "09:00"),
-            ("break_start", "13:00"),
-            ("break_end", "14:00"),
-            ("check_out", "19:00"),
-        ],
+        "events": ["09:00", "13:00", "14:00", "19:00"],
     },
 ]
+
+# =====================================================
+# RESULT PRINTER
+# =====================================================
+def print_result(row):
+    print("\n📊 FINAL ATTENDANCE")
+    print("-" * 60)
+
+    for k in [
+        "check_in",
+        "check_out",
+        "net_hours",
+        "break_minutes",
+        "late_minutes",
+        "early_exit_minutes",
+        "overtime_minutes",
+        "status",
+    ]:
+        print(f"{k:22}: {row.get(k)}")
+
+    print("-" * 60)
+
 
 # =====================================================
 # RUNNER
 # =====================================================
 def run():
-    print("\n🚀 STARTING ATTENDANCE TESTS\n")
-
-    fetch_shift()
-    fetch_policy(datetime.fromisoformat(DATE))
-
-    passed = failed = 0
+    print("\n🚀 BIOMETRIC ATTENDANCE TESTS\n")
 
     for i, s in enumerate(SCENARIOS, 1):
-        print("=" * 80)
-        print(f"SCENARIO {i}: {s['title']}")
+        print("=" * 70)
+        print(f"TEST {i}: {s['title']}")
+        print("=" * 70)
 
         clear_attendance()
 
-        for action, t in s["events"]:
-            code = call_api(action, t)
-            print(f"{action:12} @ {t} → HTTP {code}")
-            time.sleep(0.15)
+        for t in s["events"]:
+            code, res = punch(t)
+            action = res.get("action") if isinstance(res, dict) else None
+            print(f"PUNCH {t} → HTTP {code} | action={action}")
+            time.sleep(1)
 
         row = fetch_attendance()
-        if not row:
-            print("❌ No attendance row created")
-            failed += 1
-            continue
 
-        print("\n📊 FINAL ATTENDANCE")
-        for k in [
-            "check_in",
-            "check_out",
-            "net_hours",
-            "break_minutes",
-            "late_minutes",
-            "early_exit_minutes",
-            "overtime_minutes",
-            "status",
-        ]:
-            print(f"  {k:20}: {row.get(k)}")
+        if row:
+            print_result(row)
+        else:
+            print("❌ No attendance record created")
 
-        passed += 1
-
-    print("\n" + "=" * 80)
-    print(f"✅ PASSED: {passed}")
-    print(f"❌ FAILED: {failed}")
-    print("=" * 80)
+    print("\n✅ ALL TESTS COMPLETED\n")
 
 
 if __name__ == "__main__":

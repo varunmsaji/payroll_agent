@@ -5,13 +5,36 @@ from typing import Optional
 from psycopg2.extras import RealDictCursor
 
 from app.database.connection import get_connection
+from datetime import timedelta
+
 
 
 # ==========================================
 # ATTENDANCE EVENT FUNCTIONS (RAW LOGS)
 # ==========================================
 class AttendanceEventDB:
+    
 
+    @staticmethod
+    def exists_recent_event(employee_id: int, event_time, seconds: int = 30) -> bool:
+        """
+        Prevent duplicate biometric punches.
+        """
+        from .connection import get_connection
+
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT 1
+                    FROM attendance_events
+                    WHERE employee_id = %s
+                      AND ABS(EXTRACT(EPOCH FROM (event_time - %s))) <= %s
+                    LIMIT 1;
+                    """,
+                    (employee_id, event_time, seconds),
+                )
+                return cur.fetchone() is not None
     @staticmethod
     def add_event(
         employee_id: int,

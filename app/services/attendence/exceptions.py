@@ -22,3 +22,8 @@ class NoActiveBreak(AttendanceError):
 
 class AttendanceLocked(AttendanceError):
     pass
+
+
+class AttendanceException(Exception):
+    """Base class for all attendance-related errors"""
+    pass

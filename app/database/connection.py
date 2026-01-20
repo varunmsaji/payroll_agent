@@ -1,12 +1,16 @@
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 # --------------------------------------------------
 # DATABASE CONFIG
 # --------------------------------------------------
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = 'postgresql://postgres.fmhhqmmntpnxxqvnffej:t3dPZJwoCApEGgBU@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres'
 
 
 if not DATABASE_URL:

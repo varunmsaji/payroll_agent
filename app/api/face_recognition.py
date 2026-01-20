@@ -6,6 +6,10 @@ import httpx
 from app.services.attendence import AttendanceService
 from app.services.attendence.exceptions import AttendanceError
 from app.database.attendence import AttendanceEventDB, ShiftDB
+from dotenv import load_dotenv
+import os   
+
+load_dotenv()
 
 router = APIRouter(prefix="/faces", tags=["Face Attendance"])
 
