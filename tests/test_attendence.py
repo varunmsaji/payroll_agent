@@ -7,7 +7,9 @@ import time
 # =====================================================
 # CONFIG
 # =====================================================
-BASE_URL ="https://varunmsaji01-hrms-backend-latest.hf.space"
+# BASE_URL ="https://varunmsaji01-hrms-backend-latest.hf.space"
+BASE_URL = "http://localhost:8000"
+
 
 EMPLOYEE_ID = 36
 DATE = "2026-01-11"

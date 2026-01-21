@@ -5,7 +5,7 @@ import httpx
 import os
 
 from app.services.attendence import AttendanceService
-from app.services.attendence.exceptions import AttendanceError
+from app.services.attendence.exceptions import *
 
 router = APIRouter(prefix="/faces", tags=["Face Attendance"])
 
@@ -177,7 +177,7 @@ async def face_punch(
 
     # ---------- ATTENDANCE ----------
     try:
-        attendance = AttendanceService.process_punch(
+        result = AttendanceService.process_punch(
             employee_id=employee_id,
             event_time=event_time,
             source="face",
@@ -186,12 +186,32 @@ async def face_punch(
                 "device": "face_scanner",
             },
         )
-    except AttendanceError as e:
-        raise HTTPException(400, str(e))
 
-    return {
-        "success": True,
-        "employee_id": employee_id,
-        "confidence": confidence,
-        "action": attendance.get("action"),
-    }
+        # Handle ignored punches (duplicate / early / etc.)
+        if result.get("ignored"):
+            return {
+                "success": False,
+                "ignored": True,
+                "reason": result.get("reason"),
+                "allowed_after": result.get("allowed_after"),
+            }
+
+        return {
+            "success": True,
+            "employee_id": employee_id,
+            "confidence": confidence,
+            "action": result["action"],
+        }
+
+    # ✅ THIS IS THE FIX
+    except AttendanceException as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to mark attendance",
+        )
