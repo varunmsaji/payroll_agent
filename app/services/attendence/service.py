@@ -47,6 +47,26 @@ class AttendanceService:
         shift = ShiftDB.get_employee_shift(employee_id, dt)
 
         # -------------------------------------------------
+        # ⏱️ EARLY PUNCH VALIDATION (NEW)
+        # -------------------------------------------------
+        if shift:
+            shift_start = datetime.combine(dt, shift["start_time"])
+
+            early_grace = policy.early_checkin_grace_minutes or 0
+            earliest_allowed = shift_start - timedelta(minutes=early_grace)
+
+            # Punch is too early
+            if event_time < earliest_allowed:
+
+                # Allow ONLY if shift explicitly allows early attendance
+                if not shift.get("allow_early_overtime", False):
+                    return {
+                        "ignored": True,
+                        "reason": "early_punch_not_allowed",
+                        "allowed_after": earliest_allowed.isoformat(),
+                    }
+
+        # -------------------------------------------------
         # Face confidence validation
         # -------------------------------------------------
         confidence = meta.get("confidence")
@@ -61,11 +81,11 @@ class AttendanceService:
         events = cls._get_session_events(employee_id, dt)
         state = cls._derive_state(events)
 
-        # Did a break already happen today?
+        # Has break already happened?
         had_break = any(ev["event_type"] == "break_start" for ev in events)
 
         # -------------------------------------------------
-        # ✅ CORRECT IMPLICIT BIOMETRIC LOGIC
+        # ✅ IMPLICIT BIOMETRIC DECISION LOGIC
         # -------------------------------------------------
         if not state["checked_in"]:
             action = "check_in"
@@ -99,6 +119,7 @@ class AttendanceService:
             "action": action,
             "event": event,
         }
+
 
 
 
