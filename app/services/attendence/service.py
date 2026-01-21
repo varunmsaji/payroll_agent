@@ -31,7 +31,7 @@ class AttendanceService:
         dt = event_time.date()
 
         # -------------------------------------------------
-        # Duplicate punch protection
+        # 🔁 DUPLICATE PUNCH PROTECTION
         # -------------------------------------------------
         if AttendanceEventDB.exists_recent_event(
             employee_id=employee_id,
@@ -41,33 +41,34 @@ class AttendanceService:
             return {"ignored": True, "reason": "duplicate_punch"}
 
         # -------------------------------------------------
-        # Load policy & shift
+        # 📄 LOAD POLICY & SHIFT
         # -------------------------------------------------
         policy = AttendancePolicyDB.get_policy_for_date(dt)
         shift = ShiftDB.get_employee_shift(employee_id, dt)
 
         # -------------------------------------------------
-        # ⏱️ EARLY PUNCH VALIDATION (NEW)
+        # ⛔ EARLY CHECK-IN VALIDATION (OPTION A – HARD BLOCK)
         # -------------------------------------------------
         if shift:
-            shift_start = datetime.combine(dt, shift["start_time"])
+            # ✅ FIX: make shift_start timezone-aware
+            shift_start = datetime.combine(
+                dt,
+                shift["start_time"],
+                tzinfo=event_time.tzinfo
+            )
 
             early_grace = policy.early_checkin_grace_minutes or 0
             earliest_allowed = shift_start - timedelta(minutes=early_grace)
 
-            # Punch is too early
+            # ⛔ Block early punch
             if event_time < earliest_allowed:
-
-                # Allow ONLY if shift explicitly allows early attendance
-                if not shift.get("allow_early_overtime", False):
-                    return {
-                        "ignored": True,
-                        "reason": "early_punch_not_allowed",
-                        "allowed_after": earliest_allowed.isoformat(),
-                    }
+                raise EarlyPunchNotAllowed(
+                    f"Early check-in not allowed before "
+                    f"{earliest_allowed.strftime('%H:%M')}"
+                )
 
         # -------------------------------------------------
-        # Face confidence validation
+        # 🧠 FACE CONFIDENCE VALIDATION
         # -------------------------------------------------
         confidence = meta.get("confidence")
         if confidence is not None:
@@ -76,16 +77,15 @@ class AttendanceService:
                 raise AttendanceRejected("Face confidence too low")
 
         # -------------------------------------------------
-        # Fetch session events
+        # 📊 FETCH SESSION EVENTS
         # -------------------------------------------------
         events = cls._get_session_events(employee_id, dt)
         state = cls._derive_state(events)
 
-        # Has break already happened?
         had_break = any(ev["event_type"] == "break_start" for ev in events)
 
         # -------------------------------------------------
-        # ✅ IMPLICIT BIOMETRIC DECISION LOGIC
+        # ✅ IMPLICIT BIOMETRIC / FACE DECISION LOGIC
         # -------------------------------------------------
         if not state["checked_in"]:
             action = "check_in"
@@ -100,7 +100,7 @@ class AttendanceService:
             action = "check_out"
 
         # -------------------------------------------------
-        # Insert event
+        # 📝 INSERT EVENT
         # -------------------------------------------------
         event = AttendanceEventDB.add_event(
             employee_id=employee_id,
@@ -111,17 +111,17 @@ class AttendanceService:
         )
 
         # -------------------------------------------------
-        # Recalculate attendance
+        # 🔄 RECALCULATE ATTENDANCE
         # -------------------------------------------------
         cls.recalculate_for_date(employee_id, dt)
 
+        # -------------------------------------------------
+        # ✅ CONSISTENT RETURN SHAPE
+        # -------------------------------------------------
         return {
             "action": action,
             "event": event,
         }
-
-
-
 
         # =========================================================
     # INTERNAL HELPERS
