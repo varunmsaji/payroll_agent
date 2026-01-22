@@ -181,3 +181,51 @@ async def face_punch(
             status_code=500,
             detail=f"Failed to mark attendance: {str(e)}",
         )
+
+
+
+# =====================================================
+# 4️⃣ FACE IDENTIFICATION ONLY (NO ATTENDANCE)
+# =====================================================
+@router.post("/identify")
+async def identify_face_only(
+    file: UploadFile = File(...),
+):
+    """
+    Identify employee from face image.
+    NO attendance is marked.
+    """
+
+    # ---------- IMAGE VALIDATION ----------
+    image_bytes = validate_image(file)
+
+    # ---------- FACE EMBEDDING ----------
+    embedding = extract_embedding(image_bytes)
+
+    if embedding is None:
+        raise HTTPException(status_code=400, detail="No face detected")
+
+    # ---------- LOAD ALL FACES ----------
+    all_faces = get_all_faces()
+
+    if not all_faces:
+        return {
+            "match": False,
+            "employee_id": None,
+            "message": "No employees enrolled",
+        }
+
+    # ---------- IDENTIFY ----------
+    result = identify_face(all_faces, embedding)
+
+    if not result.get("match"):
+        return {
+            "match": False,
+            "employee_id": None,
+        }
+
+    return {
+        "match": True,
+        "employee_id": int(result["employee_id"]),
+        "distance": result["distance"],
+    }
