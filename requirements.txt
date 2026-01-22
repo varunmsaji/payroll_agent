@@ -49,3 +49,10 @@ python-multipart>=0.0.6
 
 
 pydantic[email]
+fastapi
+uvicorn
+python-multipart
+numpy
+opencv-python-headless
+insightface
+onnxruntime
