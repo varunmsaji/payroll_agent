@@ -31,14 +31,17 @@ class AttendanceService:
         dt = event_time.date()
 
         # -------------------------------------------------
-        # 🔁 DUPLICATE PUNCH PROTECTION
+        # 🔁 DUPLICATE PUNCH PROTECTION (30s)
         # -------------------------------------------------
         if AttendanceEventDB.exists_recent_event(
             employee_id=employee_id,
             event_time=event_time,
             seconds=30,
         ):
-            return {"ignored": True, "reason": "duplicate_punch"}
+            return {
+                "ignored": True,
+                "reason": "duplicate_punch",
+            }
 
         # -------------------------------------------------
         # 📄 LOAD POLICY & SHIFT
@@ -47,20 +50,18 @@ class AttendanceService:
         shift = ShiftDB.get_employee_shift(employee_id, dt)
 
         # -------------------------------------------------
-        # ⛔ EARLY CHECK-IN VALIDATION (OPTION A – HARD BLOCK)
+        # ⛔ EARLY CHECK-IN VALIDATION
         # -------------------------------------------------
         if shift:
-            # ✅ FIX: make shift_start timezone-aware
             shift_start = datetime.combine(
                 dt,
                 shift["start_time"],
-                tzinfo=event_time.tzinfo
+                tzinfo=event_time.tzinfo,
             )
 
             early_grace = policy.early_checkin_grace_minutes or 0
             earliest_allowed = shift_start - timedelta(minutes=early_grace)
 
-            # ⛔ Block early punch
             if event_time < earliest_allowed:
                 raise EarlyPunchNotAllowed(
                     f"Early check-in not allowed before "
@@ -68,12 +69,40 @@ class AttendanceService:
                 )
 
         # -------------------------------------------------
+        # ⛔ LATE CHECK-IN CUTOFF (🔥 NEW LOGIC)
+        # -------------------------------------------------
+        if shift and policy.late_checkin_cutoff_minutes > 0:
+            shift_start = datetime.combine(
+                dt,
+                shift["start_time"],
+                tzinfo=event_time.tzinfo,
+            )
+
+            latest_allowed = shift_start + timedelta(
+                minutes=policy.late_checkin_cutoff_minutes
+            )
+
+            # Only applies if employee has NOT checked in yet
+            existing_events = cls._get_session_events(employee_id, dt)
+            has_checked_in = any(
+                ev["event_type"] == "check_in"
+                for ev in existing_events
+            )
+
+            if not has_checked_in and event_time > latest_allowed:
+                raise LatePunchNotAllowed(
+                    f"Check-in not allowed after "
+                    f"{latest_allowed.strftime('%H:%M')}"
+                )
+
+        # -------------------------------------------------
         # 🧠 FACE CONFIDENCE VALIDATION
         # -------------------------------------------------
         confidence = meta.get("confidence")
-        if confidence is not None:
-            min_conf = getattr(policy, "min_face_confidence", None)
-            if min_conf and confidence < min_conf:
+        min_conf = getattr(policy, "min_face_confidence", None)
+
+        if min_conf is not None and confidence is not None:
+            if confidence < min_conf:
                 raise AttendanceRejected("Face confidence too low")
 
         # -------------------------------------------------
@@ -85,7 +114,7 @@ class AttendanceService:
         had_break = any(ev["event_type"] == "break_start" for ev in events)
 
         # -------------------------------------------------
-        # ✅ IMPLICIT BIOMETRIC / FACE DECISION LOGIC
+        # ✅ AUTO DECISION LOGIC
         # -------------------------------------------------
         if not state["checked_in"]:
             action = "check_in"
@@ -120,7 +149,8 @@ class AttendanceService:
         # -------------------------------------------------
         return {
             "action": action,
-            "event": event,
+            "employee_id": employee_id,
+            "event_time": event_time.isoformat(),
         }
 
         # =========================================================
