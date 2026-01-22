@@ -2,6 +2,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from datetime import datetime
 from typing import Optional
 import os
+import numpy as np
 
 from app.database.face_recognition_insight import (
     save_face,
