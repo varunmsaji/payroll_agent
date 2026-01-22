@@ -11,10 +11,11 @@ face_app.prepare(ctx_id=0, det_size=(640, 640))
 
 
 # =====================================================
-# CONFIG (REALISTIC DEFAULTS)
+# CONFIG (3-PHOTO ENROLLMENT)
 # =====================================================
 MIN_FACE_SIZE = 120        # reject tiny / blurry faces
-MATCH_THRESHOLD = 1.0      # L2 distance threshold (normalized embeddings)
+MATCH_THRESHOLD = 0.65     # Optimized for 3-photo mean (slightly tighter)
+HIGH_CONFIDENCE = 0.45     # For VIP/auto-unlock
 
 
 # =====================================================
@@ -37,9 +38,7 @@ def extract_embedding(image_bytes: bytes):
     if not faces:
         return None
 
-    # -------------------------------------------------
-    # Pick LARGEST face (CompreFace behavior)
-    # -------------------------------------------------
+    # Pick LARGEST face
     faces = sorted(
         faces,
         key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]),
@@ -48,23 +47,21 @@ def extract_embedding(image_bytes: bytes):
 
     face = faces[0]
 
-    # -------------------------------------------------
-    # Reject SMALL / LOW-QUALITY faces
-    # -------------------------------------------------
+    # Reject SMALL faces
     x1, y1, x2, y2 = face.bbox
     w, h = x2 - x1, y2 - y1
 
     if w < MIN_FACE_SIZE or h < MIN_FACE_SIZE:
         return None
 
-    # InsightFace embedding (512-d) ✅ NORMALIZED
+    # Normalized embedding
     emb = face.embedding.astype("float32")
     emb /= np.linalg.norm(emb) + 1e-8
     return emb
 
 
 # =====================================================
-# VERIFY (1:1) — USING MEAN TEMPLATE
+# VERIFY (1:1) — 3-PHOTO MEAN
 # =====================================================
 def compare_embeddings(
     known_embeddings: list,
@@ -72,13 +69,12 @@ def compare_embeddings(
     threshold: float = MATCH_THRESHOLD
 ):
     """
-    Verify face against stored embeddings for ONE employee.
-    Uses MEAN embedding (CompreFace-style).
+    Verify against exactly 3 stored embeddings (front + 2 sides).
     """
     if not known_embeddings:
         return False, None
 
-    # ✅ Normalize all embeddings
+    # Stack and normalize
     known = np.vstack([np.array(e, dtype="float32") for e in known_embeddings])
     known /= np.linalg.norm(known, axis=1, keepdims=True) + 1e-8
 
@@ -94,7 +90,7 @@ def compare_embeddings(
 
 
 # =====================================================
-# IDENTIFY (1:N) — USING MEAN TEMPLATE
+# IDENTIFY (1:N) — 3-PHOTO MEANS
 # =====================================================
 def identify_face(
     all_faces: dict,
@@ -103,14 +99,12 @@ def identify_face(
 ):
     """
     Identify employee from face.
-    all_faces = {
-        employee_id: [embedding1, embedding2, ...]
-    }
+    Expects exactly 3 embeddings per employee (front + left + right).
     """
     best_employee = None
     best_distance = float("inf")
 
-    # ✅ Normalize query
+    # Normalize query
     q = np.array(unknown_embedding, dtype="float32")
     q /= np.linalg.norm(q) + 1e-8
 
@@ -141,3 +135,24 @@ def identify_face(
         "match": False,
         "employee_id": None,
     }
+
+
+# =====================================================
+# VALIDATE 3-PHOTO ENROLLMENT (NEW)
+# =====================================================
+def validate_enrollment(embeddings: list) -> bool:
+    """
+    Ensure exactly 3 good quality photos enrolled.
+    """
+    if len(embeddings) != 3:
+        return False
+    
+    # Check diversity (angles not too similar)
+    embs = np.vstack([np.array(e, dtype="float32") for e in embeddings])
+    embs /= np.linalg.norm(embs, axis=1, keepdims=True) + 1e-8
+    mean_emb = embs.mean(axis=0)
+    
+    dists_to_mean = [np.linalg.norm(mean_emb - e) for e in embs]
+    avg_diversity = np.mean(dists_to_mean)
+    
+    return avg_diversity > 0.1  # Minimum angle spread
