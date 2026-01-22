@@ -24,7 +24,6 @@ router = APIRouter(prefix="/faces", tags=["Face Attendance"])
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_SIZE_BYTES = 5 * 1024 * 1024
 
-
 # =====================================================
 # UTILS
 # =====================================================
@@ -40,7 +39,6 @@ def validate_image(file: UploadFile) -> bytes:
     file.file.seek(0)
     return data
 
-
 # =====================================================
 # 1️⃣ REGISTER FACE (ADMIN / ONBOARDING)
 # =====================================================
@@ -49,11 +47,6 @@ async def register_face(
     employee_id: int = Query(...),
     file: UploadFile = File(...),
 ):
-    """
-    Register ONE face for an employee.
-    Can be called multiple times.
-    """
-
     image_bytes = validate_image(file)
     embedding = extract_embedding(image_bytes)
 
@@ -68,7 +61,6 @@ async def register_face(
         "message": "Face registered successfully",
     }
 
-
 # =====================================================
 # 2️⃣ VERIFY FACE FOR EMPLOYEE (OPTIONAL)
 # =====================================================
@@ -77,10 +69,6 @@ async def verify_face(
     employee_id: int = Query(...),
     file: UploadFile = File(...),
 ):
-    """
-    Verify a face against a specific employee.
-    """
-
     image_bytes = validate_image(file)
     embedding = extract_embedding(image_bytes)
 
@@ -92,19 +80,16 @@ async def verify_face(
     if not stored_embeddings:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    match, distance = compare_embeddings(
-        stored_embeddings,
-        embedding,
-    )
+    match, distance = compare_embeddings(stored_embeddings, embedding)
 
     return {
         "success": True,
         "employee_id": employee_id,
         "match": match,
         "distance": distance,
+        "confidence": float(np.clip(1.0 - distance, 0.0, 1.0)),  # ✅ Fixed
         "registered_faces": len(stored_embeddings),
     }
-
 
 # =====================================================
 # 3️⃣ FACE ATTENDANCE PUNCH (🔥 MAIN API)
@@ -114,12 +99,6 @@ async def face_punch(
     file: UploadFile = File(...),
     event_time: Optional[datetime] = Query(None),
 ):
-    """
-    Full flow:
-    - Identify face using InsightFace
-    - Mark attendance
-    """
-
     event_time = event_time or datetime.utcnow()
 
     # ---------- IMAGE VALIDATION ----------
@@ -138,13 +117,16 @@ async def face_punch(
 
     result = identify_face(all_faces, embedding)
 
+    print(f"DEBUG punch result: {result}")  # 🐛 Debug
+
     if not result.get("match"):
         raise HTTPException(status_code=401, detail="Face not recognized")
 
     employee_id = int(result["employee_id"])
+    distance = result["distance"]
 
-    # Convert distance → confidence (HRMS-friendly)
-    confidence = round(max(0.0, 1.0 - result["distance"]), 4)
+    # ✅ Better confidence (threshold=1.0)
+    confidence = float(np.clip(1.0 - distance, 0.0, 1.0))
 
     # ---------- ATTENDANCE ----------
     try:
@@ -154,6 +136,7 @@ async def face_punch(
             source="face",
             meta={
                 "confidence": confidence,
+                "distance": distance,
                 "device": "face_scanner",
             },
         )
@@ -170,6 +153,7 @@ async def face_punch(
             "success": True,
             "employee_id": employee_id,
             "confidence": confidence,
+            "distance": distance,
             "action": punch_result["action"],
         }
 
@@ -182,8 +166,6 @@ async def face_punch(
             detail=f"Failed to mark attendance: {str(e)}",
         )
 
-
-
 # =====================================================
 # 4️⃣ FACE IDENTIFICATION ONLY (NO ATTENDANCE)
 # =====================================================
@@ -191,21 +173,12 @@ async def face_punch(
 async def identify_face_only(
     file: UploadFile = File(...),
 ):
-    """
-    Identify employee from face image.
-    NO attendance is marked.
-    """
-
-    # ---------- IMAGE VALIDATION ----------
     image_bytes = validate_image(file)
-
-    # ---------- FACE EMBEDDING ----------
     embedding = extract_embedding(image_bytes)
 
     if embedding is None:
         raise HTTPException(status_code=400, detail="No face detected")
 
-    # ---------- LOAD ALL FACES ----------
     all_faces = get_all_faces()
 
     if not all_faces:
@@ -215,7 +188,6 @@ async def identify_face_only(
             "message": "No employees enrolled",
         }
 
-    # ---------- IDENTIFY ----------
     result = identify_face(all_faces, embedding)
 
     if not result.get("match"):
@@ -228,4 +200,5 @@ async def identify_face_only(
         "match": True,
         "employee_id": int(result["employee_id"]),
         "distance": result["distance"],
+        "confidence": float(np.clip(1.0 - result["distance"], 0.0, 1.0)),
     }
