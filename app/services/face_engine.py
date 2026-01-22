@@ -2,16 +2,31 @@ import cv2
 import numpy as np
 from insightface.app import FaceAnalysis
 
-# Initialize InsightFace once (important)
+# =====================================================
+# INIT INSIGHTFACE (ONCE)
+# =====================================================
 face_app = FaceAnalysis(name="buffalo_l")
 face_app.prepare(ctx_id=0, det_size=(640, 640))
 
 
+# =====================================================
+# CONFIG (COMPRE-FACE–LIKE DEFAULTS)
+# =====================================================
+MIN_FACE_SIZE = 120        # reject tiny / blurry faces
+MATCH_THRESHOLD = 0.75     # relaxed but safe
+
+
+# =====================================================
+# EXTRACT EMBEDDING (IMPROVED)
+# =====================================================
 def extract_embedding(image_bytes: bytes):
     """
     Extract face embedding from image bytes.
-    Returns numpy array or None.
+    - Picks largest face
+    - Rejects small faces
+    - Returns embedding or None
     """
+
     img_array = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
 
@@ -22,49 +37,92 @@ def extract_embedding(image_bytes: bytes):
     if not faces:
         return None
 
-    return faces[0].embedding
+    # -------------------------------------------------
+    # Pick LARGEST face (CompreFace behavior)
+    # -------------------------------------------------
+    faces = sorted(
+        faces,
+        key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]),
+        reverse=True
+    )
+
+    face = faces[0]
+
+    # -------------------------------------------------
+    # Reject SMALL / LOW-QUALITY faces
+    # -------------------------------------------------
+    x1, y1, x2, y2 = face.bbox
+    w, h = x2 - x1, y2 - y1
+
+    if w < MIN_FACE_SIZE or h < MIN_FACE_SIZE:
+        return None
+
+    # InsightFace embedding (512-d)
+    return face.embedding.astype("float32")
 
 
+# =====================================================
+# VERIFY (1:1) — USING MEAN TEMPLATE
+# =====================================================
 def compare_embeddings(
     known_embeddings: list,
     unknown_embedding: np.ndarray,
-    threshold: float = 0.6
+    threshold: float = MATCH_THRESHOLD
 ):
     """
-    Compare unknown face against multiple stored embeddings.
-    Returns (match: bool, best_distance: float)
+    Verify face against stored embeddings for ONE employee.
+    Uses MEAN embedding (CompreFace-style).
     """
-    best_distance = float("inf")
 
-    for emb in known_embeddings:
-        dist = float(np.linalg.norm(emb - unknown_embedding))
-        if dist < best_distance:
-            best_distance = dist
+    if not known_embeddings:
+        return False, None
 
-    match = bool(best_distance < threshold)
-    return match, best_distance
+    mean_embedding = np.mean(
+        np.vstack(known_embeddings),
+        axis=0
+    )
+
+    distance = float(
+        np.linalg.norm(mean_embedding - unknown_embedding)
+    )
+
+    return distance < threshold, distance
 
 
-
+# =====================================================
+# IDENTIFY (1:N) — USING MEAN TEMPLATE
+# =====================================================
 def identify_face(
     all_faces: dict,
     unknown_embedding: np.ndarray,
-    threshold: float = 0.6
+    threshold: float = MATCH_THRESHOLD
 ):
     """
+    Identify employee from face.
     all_faces = {
         employee_id: [embedding1, embedding2, ...]
     }
     """
+
     best_employee = None
     best_distance = float("inf")
 
     for emp_id, embeddings in all_faces.items():
-        for emb in embeddings:
-            dist = float(np.linalg.norm(emb - unknown_embedding))
-            if dist < best_distance:
-                best_distance = dist
-                best_employee = emp_id
+        if not embeddings:
+            continue
+
+        mean_embedding = np.mean(
+            np.vstack(embeddings),
+            axis=0
+        )
+
+        distance = float(
+            np.linalg.norm(mean_embedding - unknown_embedding)
+        )
+
+        if distance < best_distance:
+            best_distance = distance
+            best_employee = emp_id
 
     if best_employee and best_distance < threshold:
         return {
