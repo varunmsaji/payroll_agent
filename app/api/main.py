@@ -15,6 +15,7 @@ from app.api.attendence_dashboard import router as attendence_dashboard_router
 from app.api.face_recognition import router as face_recognition_router
 from app.api.attendence_test_api import router as attendence_test_router
 from app.api.attendence_record import router as attendence_record_router
+# from app.api.face_recognition_insight import router as face_recognition_insight_router
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -23,6 +24,7 @@ app.add_middleware(
     allow_methods=["*"],        # GET, POST, PUT, DELETE
     allow_headers=["*"],        # Authorization, Content-Type, etc.
 )
+
 
 app.include_router(dashboard_router)
 app.include_router(shifts_router)
@@ -38,3 +40,4 @@ app.include_router(settings_router)
 app.include_router(face_recognition_router)
 app.include_router(attendence_test_router)
 app.include_router(attendence_record_router)
+# app.include_router(face_recognition_insight_router)

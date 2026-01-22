@@ -10,8 +10,7 @@ load_dotenv()
 # DATABASE CONFIG
 # --------------------------------------------------
 
-DATABASE_URL = 'postgresql://postgres.fmhhqmmntpnxxqvnffej:t3dPZJwoCApEGgBU@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres'
-
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
     raise RuntimeError(

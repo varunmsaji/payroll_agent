@@ -1,21 +1,26 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from datetime import datetime
 from typing import Optional
-import httpx
 import os
 
+from app.database.face_recognition_insight import (
+    save_face,
+    get_faces,
+    get_all_faces,
+)
+from app.services.face_engine import (
+    extract_embedding,
+    compare_embeddings,
+    identify_face,
+)
 from app.services.attendence import AttendanceService
-from app.services.attendence.exceptions import *
+from app.services.attendence.exceptions import AttendanceException
 
 router = APIRouter(prefix="/faces", tags=["Face Attendance"])
 
 # =====================================================
 # CONFIG
 # =====================================================
-COMPRE_FACE_URL = os.getenv("COMPRE_FACE_URL")  # e.g. http://localhost:8001
-API_KEY = os.getenv("FACE_API_KEY")
-COLLECTION_ID = os.getenv("COLLECTION_ID")
-
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_SIZE_BYTES = 5 * 1024 * 1024
 
@@ -25,116 +30,84 @@ MAX_SIZE_BYTES = 5 * 1024 * 1024
 # =====================================================
 def validate_image(file: UploadFile) -> bytes:
     if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(400, "Invalid image type")
+        raise HTTPException(status_code=400, detail="Invalid image type")
 
     data = file.file.read()
+
     if len(data) > MAX_SIZE_BYTES:
-        raise HTTPException(400, "Image too large")
+        raise HTTPException(status_code=400, detail="Image too large")
 
     file.file.seek(0)
     return data
 
 
-def compreface_headers():
-    return {"x-api-key": API_KEY}
-
-
-def compreface_file(file: UploadFile, data: bytes):
-    """
-    ✅ REQUIRED format for CompreFace
-    """
-    return {
-        "file": (
-            file.filename or "face.jpg",
-            data,
-            file.content_type,
-        )
-    }
-
-
 # =====================================================
-# 1️⃣ REGISTER FACE
+# 1️⃣ REGISTER FACE (ADMIN / ONBOARDING)
 # =====================================================
 @router.post("/register")
 async def register_face(
-    employee_id: int = Form(...),
+    employee_id: int = Query(...),
     file: UploadFile = File(...),
 ):
     """
-    Register a face for an employee
+    Register ONE face for an employee.
+    Can be called multiple times.
     """
 
     image_bytes = validate_image(file)
+    embedding = extract_embedding(image_bytes)
 
-    url = f"{COMPRE_FACE_URL}/api/v1/recognition/faces"
-    params = {
-        "collectionId": COLLECTION_ID,
-        "subject": str(employee_id),
-    }
+    if embedding is None:
+        raise HTTPException(status_code=400, detail="No face detected")
 
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(
-            url,
-            headers=compreface_headers(),
-            params=params,
-            files=compreface_file(file, image_bytes),
-        )
-
-    if resp.status_code not in (200, 201):
-        raise HTTPException(500, f"CompreFace error: {resp.text}")
+    save_face(str(employee_id), embedding)
 
     return {
         "success": True,
         "employee_id": employee_id,
         "message": "Face registered successfully",
-        "result": resp.json(),
     }
 
 
 # =====================================================
-# 2️⃣ VERIFY / RECOGNIZE FACE
+# 2️⃣ VERIFY FACE FOR EMPLOYEE (OPTIONAL)
 # =====================================================
 @router.post("/verify")
 async def verify_face(
+    employee_id: int = Query(...),
     file: UploadFile = File(...),
 ):
     """
-    Only recognize face (NO attendance)
+    Verify a face against a specific employee.
     """
 
     image_bytes = validate_image(file)
+    embedding = extract_embedding(image_bytes)
 
-    url = f"{COMPRE_FACE_URL}/api/v1/recognition/recognize"
-    params = {"collectionId": COLLECTION_ID}
+    if embedding is None:
+        raise HTTPException(status_code=400, detail="No face detected")
 
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(
-            url,
-            headers=compreface_headers(),
-            params=params,
-            files=compreface_file(file, image_bytes),
-        )
+    stored_embeddings = get_faces(str(employee_id))
 
-    if resp.status_code != 200:
-        raise HTTPException(500, resp.text)
+    if not stored_embeddings:
+        raise HTTPException(status_code=404, detail="Employee not found")
 
-    data = resp.json()
-    results = data.get("result", [])
-
-    if not results or not results[0].get("subjects"):
-        raise HTTPException(401, "Face not recognized")
-
-    subject = results[0]["subjects"][0]
+    match, distance = compare_embeddings(
+        stored_embeddings,
+        embedding,
+    )
 
     return {
         "success": True,
-        "employee_id": int(subject["subject"]),
-        "confidence": float(subject["similarity"]),
+        "employee_id": employee_id,
+        "match": match,
+        "distance": distance,
+        "registered_faces": len(stored_embeddings),
     }
 
 
 # =====================================================
-# 3️⃣ FACE ATTENDANCE PUNCH
+# 3️⃣ FACE ATTENDANCE PUNCH (🔥 MAIN API)
 # =====================================================
 @router.post("/punch")
 async def face_punch(
@@ -143,41 +116,39 @@ async def face_punch(
 ):
     """
     Full flow:
-    - Recognize face
+    - Identify face using InsightFace
     - Mark attendance
     """
 
     event_time = event_time or datetime.utcnow()
+
+    # ---------- IMAGE VALIDATION ----------
     image_bytes = validate_image(file)
 
-    # ---------- FACE RECOGNITION ----------
-    url = f"{COMPRE_FACE_URL}/api/v1/recognition/recognize"
-    params = {"collectionId": COLLECTION_ID}
+    # ---------- FACE IDENTIFICATION ----------
+    embedding = extract_embedding(image_bytes)
 
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(
-            url,
-            headers=compreface_headers(),
-            params=params,
-            files=compreface_file(file, image_bytes),
-        )
+    if embedding is None:
+        raise HTTPException(status_code=400, detail="No face detected")
 
-    if resp.status_code != 200:
-        raise HTTPException(500, resp.text)
+    all_faces = get_all_faces()
 
-    data = resp.json()
-    results = data.get("result", [])
+    if not all_faces:
+        raise HTTPException(status_code=404, detail="No employees enrolled")
 
-    if not results or not results[0].get("subjects"):
-        raise HTTPException(401, "Face not recognized")
+    result = identify_face(all_faces, embedding)
 
-    subject = results[0]["subjects"][0]
-    employee_id = int(subject["subject"])
-    confidence = float(subject["similarity"])
+    if not result.get("match"):
+        raise HTTPException(status_code=401, detail="Face not recognized")
+
+    employee_id = int(result["employee_id"])
+
+    # Convert distance → confidence (HRMS-friendly)
+    confidence = round(max(0.0, 1.0 - result["distance"]), 4)
 
     # ---------- ATTENDANCE ----------
     try:
-        result = AttendanceService.process_punch(
+        punch_result = AttendanceService.process_punch(
             employee_id=employee_id,
             event_time=event_time,
             source="face",
@@ -187,31 +158,26 @@ async def face_punch(
             },
         )
 
-        # Handle ignored punches (duplicate / early / etc.)
-        if result.get("ignored"):
+        if punch_result.get("ignored"):
             return {
                 "success": False,
                 "ignored": True,
-                "reason": result.get("reason"),
-                "allowed_after": result.get("allowed_after"),
+                "reason": punch_result.get("reason"),
+                "allowed_after": punch_result.get("allowed_after"),
             }
 
         return {
             "success": True,
             "employee_id": employee_id,
             "confidence": confidence,
-            "action": result["action"],
+            "action": punch_result["action"],
         }
 
-    # ✅ THIS IS THE FIX
     except AttendanceException as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
+        raise HTTPException(status_code=400, detail=str(e))
 
-    except Exception:
+    except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail="Failed to mark attendance",
+            detail=f"Failed to mark attendance: {str(e)}",
         )
