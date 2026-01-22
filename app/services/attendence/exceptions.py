@@ -25,10 +25,7 @@ class AttendanceLocked(AttendanceError):
 
 
 class AttendanceException(Exception):
-    """Base class for all attendance-related errors"""
-    pass
+    """Base attendance exception"""
 
-
-class AttendanceRejected(Exception):
-    """Raised when attendance punch is rejected by policy"""
-    pass
+class AttendanceRejected(AttendanceException):
+    """Business-rule rejection"""
