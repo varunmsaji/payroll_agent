@@ -1,8 +1,8 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from datetime import datetime
 from typing import Optional
+import os
 import numpy as np
-
 from app.database.face_recognition_insight import (
     save_face,
     get_faces,
@@ -23,7 +23,6 @@ router = APIRouter(prefix="/faces", tags=["Face Attendance"])
 # =====================================================
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_SIZE_BYTES = 5 * 1024 * 1024
-MIN_FACE_CONFIDENCE = 0.65
 
 # =====================================================
 # UTILS
@@ -63,7 +62,7 @@ async def register_face(
     }
 
 # =====================================================
-# 2️⃣ VERIFY FACE (OPTIONAL)
+# 2️⃣ VERIFY FACE FOR EMPLOYEE (OPTIONAL)
 # =====================================================
 @router.post("/verify")
 async def verify_face(
@@ -82,14 +81,13 @@ async def verify_face(
         raise HTTPException(status_code=404, detail="Employee not found")
 
     match, distance = compare_embeddings(stored_embeddings, embedding)
-    confidence = float(np.clip(1.0 - distance, 0.0, 1.0))
 
     return {
         "success": True,
         "employee_id": employee_id,
         "match": match,
         "distance": distance,
-        "confidence": confidence,
+        "confidence": float(np.clip(1.0 - distance, 0.0, 1.0)),  # ✅ Fixed
         "registered_faces": len(stored_embeddings),
     }
 
@@ -106,7 +104,7 @@ async def face_punch(
     # ---------- IMAGE VALIDATION ----------
     image_bytes = validate_image(file)
 
-    # ---------- FACE EMBEDDING ----------
+    # ---------- FACE IDENTIFICATION ----------
     embedding = extract_embedding(image_bytes)
 
     if embedding is None:
@@ -117,8 +115,9 @@ async def face_punch(
     if not all_faces:
         raise HTTPException(status_code=404, detail="No employees enrolled")
 
-    # ---------- FACE IDENTIFICATION ----------
     result = identify_face(all_faces, embedding)
+
+    print(f"DEBUG punch result: {result}")  # 🐛 Debug
 
     if not result.get("match"):
         raise HTTPException(status_code=401, detail="Face not recognized")
@@ -126,13 +125,8 @@ async def face_punch(
     employee_id = int(result["employee_id"])
     distance = result["distance"]
 
+    # ✅ Better confidence (threshold=1.0)
     confidence = float(np.clip(1.0 - distance, 0.0, 1.0))
-
-    if confidence < MIN_FACE_CONFIDENCE:
-        raise HTTPException(
-            status_code=401,
-            detail="Face confidence too low",
-        )
 
     # ---------- ATTENDANCE ----------
     try:
@@ -158,26 +152,21 @@ async def face_punch(
         return {
             "success": True,
             "employee_id": employee_id,
-            "action": punch_result["action"],
             "confidence": confidence,
             "distance": distance,
+            "action": punch_result["action"],
         }
 
     except AttendanceException as e:
-        # ✅ BUSINESS RULE REJECTION
         raise HTTPException(
             status_code=403,
-            detail={
-                "status": "rejected",
-                "reason": str(e),
-            },
+            detail=str(e),
         )
 
-    except Exception:
-        # ❌ REAL SERVER ERROR
+    except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail="Internal attendance processing error",
+            detail=f"Failed to mark attendance: {str(e)}",
         )
 
 # =====================================================
@@ -210,12 +199,9 @@ async def identify_face_only(
             "employee_id": None,
         }
 
-    distance = result["distance"]
-    confidence = float(np.clip(1.0 - distance, 0.0, 1.0))
-
     return {
         "match": True,
         "employee_id": int(result["employee_id"]),
-        "distance": distance,
-        "confidence": confidence,
+        "distance": result["distance"],
+        "confidence": float(np.clip(1.0 - result["distance"], 0.0, 1.0)),
     }

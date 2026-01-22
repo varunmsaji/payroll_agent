@@ -24,8 +24,17 @@ class AttendanceLocked(AttendanceError):
     pass
 
 
+# =====================================================
+# Attendance rule exceptions (used by process_punch)
+# =====================================================
+
 class AttendanceException(Exception):
     """Base attendance exception"""
 
+
 class AttendanceRejected(AttendanceException):
     """Business-rule rejection"""
+
+
+class EarlyPunchNotAllowed(AttendanceException):
+    """Early check-in violation"""

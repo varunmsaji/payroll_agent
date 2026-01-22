@@ -53,9 +53,9 @@ class AttendanceService:
         state = cls._derive_state(events)
 
         # -------------------------------------------------
-        # ⛔ HARD BLOCK: EARLY CHECK-IN
+        # ⛔ EARLY CHECK-IN (WITH GRACE)
         # -------------------------------------------------
-        if shift:
+        if shift and not state["checked_in"]:
             shift_start = datetime.combine(
                 dt,
                 shift["start_time"],
@@ -72,20 +72,37 @@ class AttendanceService:
                 )
 
         # -------------------------------------------------
-        # ⛔ HARD BLOCK: LATE CHECK-IN (🔥 NO GRACE, EVER)
+        # ⛔ LATE CHECK-IN (WITH GRACE, HARD STOP AT SHIFT END)
         # -------------------------------------------------
-        if shift:
+        if shift and not state["checked_in"]:
+
             shift_start = datetime.combine(
                 dt,
                 shift["start_time"],
                 tzinfo=event_time.tzinfo
             )
 
-            # First punch of the day AND after shift start → BLOCK
-            if not state["checked_in"] and event_time > shift_start:
+            shift_end = datetime.combine(
+                dt,
+                shift["end_time"],
+                tzinfo=event_time.tzinfo
+            )
+
+            # 🚫 Never allow check-in after shift end
+            if event_time > shift_end:
+                raise AttendanceRejected(
+                    f"Check-in not allowed after shift end "
+                    f"({shift_end.strftime('%H:%M')})"
+                )
+
+            # ⏱ Allow late check-in only within grace
+            late_grace = policy.late_grace_minutes or 0
+            latest_allowed = shift_start + timedelta(minutes=late_grace)
+
+            if event_time > latest_allowed:
                 raise AttendanceRejected(
                     f"Late check-in not allowed after "
-                    f"{shift_start.strftime('%H:%M')}"
+                    f"{latest_allowed.strftime('%H:%M')}"
                 )
 
         # -------------------------------------------------
@@ -139,7 +156,7 @@ class AttendanceService:
         }
 
 
-        # =========================================================
+            # =========================================================
     # INTERNAL HELPERS
     # =========================================================
     @classmethod
