@@ -1,27 +1,25 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import json
 from typing import Optional
 
 from psycopg2.extras import RealDictCursor
+from zoneinfo import ZoneInfo
 
 from app.database.connection import get_connection
-from datetime import timedelta
 
-
+UTC = ZoneInfo("UTC")
 
 # ==========================================
 # ATTENDANCE EVENT FUNCTIONS (RAW LOGS)
 # ==========================================
 class AttendanceEventDB:
-    
 
     @staticmethod
-    def exists_recent_event(employee_id: int, event_time, seconds: int = 30) -> bool:
+    def exists_recent_event(employee_id: int, event_time: datetime, seconds: int = 30) -> bool:
         """
         Prevent duplicate biometric punches.
+        event_time MUST be UTC-aware before calling.
         """
-        from .connection import get_connection
-
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -35,6 +33,7 @@ class AttendanceEventDB:
                     (employee_id, event_time, seconds),
                 )
                 return cur.fetchone() is not None
+
     @staticmethod
     def add_event(
         employee_id: int,
@@ -43,7 +42,12 @@ class AttendanceEventDB:
         meta: Optional[dict] = None,
         event_time: Optional[datetime] = None,
     ):
-        event_time = event_time or datetime.utcnow()
+        # 🔥 CRITICAL: ALWAYS STORE UTC-AWARE TIMESTAMP
+        if event_time is None:
+            event_time = datetime.now(UTC)
+        elif event_time.tzinfo is None:
+            event_time = event_time.replace(tzinfo=UTC)
+
         meta_json = json.dumps(meta) if meta else None
 
         with get_connection() as conn:
@@ -59,25 +63,31 @@ class AttendanceEventDB:
                 )
                 return cur.fetchone()
 
-    @staticmethod
-    def get_events_for_window(
-        employee_id: int,
-        start_dt: datetime,
-        end_dt: datetime,
-    ):
+    @classmethod
+    def get_events_for_window(cls, employee_id: int, start: datetime, end: datetime):
+        """
+        Returns events WITH UTC tzinfo guaranteed.
+        """
         with get_connection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(
                     """
-                    SELECT *
+                    SELECT event_id, employee_id, event_type, event_time, source, meta
                     FROM attendance_events
                     WHERE employee_id = %s
                       AND event_time BETWEEN %s AND %s
                     ORDER BY event_time ASC;
                     """,
-                    (employee_id, start_dt, end_dt),
+                    (employee_id, start, end),
                 )
-                return cur.fetchall()
+                rows = cur.fetchall()
+
+        # 🔥 FORCE UTC TZINFO (DB SAFETY NET)
+        for r in rows:
+            if r["event_time"] and r["event_time"].tzinfo is None:
+                r["event_time"] = r["event_time"].replace(tzinfo=UTC)
+
+        return rows
 
     @staticmethod
     def get_all_events_for_employee(employee_id: int):
@@ -93,7 +103,13 @@ class AttendanceEventDB:
                     """,
                     (employee_id,),
                 )
-                return cur.fetchall()
+                rows = cur.fetchall()
+
+        for r in rows:
+            if r["event_time"] and r["event_time"].tzinfo is None:
+                r["event_time"] = r["event_time"].replace(tzinfo=UTC)
+
+        return rows
 
 
 # ==========================================
@@ -119,12 +135,6 @@ class AttendanceDB:
 
     @staticmethod
     def upsert_full_attendance(data: dict):
-        """
-        Stores ALL payroll-required columns.
-        Respects payroll lock.
-        """
-
-        # ✅ Normalize missing keys (CRITICAL)
         REQUIRED_KEYS = [
             "employee_id",
             "shift_id",
@@ -151,7 +161,6 @@ class AttendanceDB:
         for key in REQUIRED_KEYS:
             data.setdefault(key, None)
 
-        # Sensible defaults (optional but recommended)
         data.setdefault("break_minutes", 0)
         data.setdefault("overtime_minutes", 0)
         data.setdefault("late_minutes", 0)
@@ -238,57 +247,10 @@ class AttendanceDB:
                 return cur.fetchone()
 
 
-    @staticmethod
-    def get_attendance_range(employee_id: int, start_date: date, end_date: date):
-        with get_connection() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(
-                    """
-                    SELECT *
-                    FROM attendance
-                    WHERE employee_id = %s
-                      AND date BETWEEN %s AND %s
-                    ORDER BY date;
-                    """,
-                    (employee_id, start_date, end_date),
-                )
-                return cur.fetchall()
-
-    @staticmethod
-    def get_attendance(employee_id: int):
-        with get_connection() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(
-                    """
-                    SELECT *
-                    FROM attendance
-                    WHERE employee_id = %s
-                    ORDER BY date DESC;
-                    """,
-                    (employee_id,),
-                )
-                return cur.fetchall()
-
-
 # ==========================================
 # HOLIDAY FUNCTIONS
 # ==========================================
 class HolidayDB:
-
-    @staticmethod
-    def add_holiday(dt: date, name: str, is_optional: bool = False):
-        with get_connection() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(
-                    """
-                    INSERT INTO holidays (holiday_date, name, is_optional)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (holiday_date) DO NOTHING
-                    RETURNING *;
-                    """,
-                    (dt, name, is_optional),
-                )
-                return cur.fetchone()
 
     @staticmethod
     def is_holiday(dt: date) -> bool:
