@@ -120,7 +120,6 @@ class AttendanceService:
                 state["on_break"] = False
 
         return state
-
     @classmethod
     def recalculate_for_date(cls, employee_id: int, dt: date):
         policy = AttendancePolicyDB.get_policy_for_date(dt)
@@ -129,14 +128,24 @@ class AttendanceService:
         shift = ShiftDB.get_employee_shift(employee_id, dt)
         ws_local, we_local, required_hours, is_night, shift_id = cls._get_shift_window(shift, dt)
 
+        # Convert shift window to UTC
         ws = ws_local.replace(tzinfo=IST).astimezone(UTC)
         we = we_local.replace(tzinfo=IST).astimezone(UTC)
 
-        events = AttendanceEventDB.get_events_for_window(employee_id, ws, we + timedelta(hours=12))
+        # Fetch events safely
+        events = AttendanceEventDB.get_events_for_window(
+            employee_id,
+            ws,
+            we + timedelta(hours=12)
+        )
 
         work_sec, break_sec, check_in, check_out = engine.compute_work_and_breaks(events)
 
+        # 🔥 FIX STARTS HERE
+        total_hours = round((work_sec + break_sec) / 3600, 2)
         net_hours = round(work_sec / 3600, 2)
+        # 🔥 FIX ENDS HERE
+
         late_minutes, is_late = engine.compute_late(shift, dt, check_in)
         early_minutes, is_early = engine.compute_early(shift, dt, check_out)
 
@@ -148,17 +157,20 @@ class AttendanceService:
             "date": dt,
             "check_in": check_in,
             "check_out": check_out,
+            "total_hours": total_hours,      # ✅ REQUIRED
             "net_hours": net_hours,
             "break_minutes": int(break_sec / 60),
             "late_minutes": late_minutes,
             "early_exit_minutes": early_minutes,
             "is_late": is_late,
             "is_early_checkout": is_early,
+            "is_weekend": dt.weekday() >= 5,
             "is_holiday": HolidayDB.is_holiday(dt),
             "is_night_shift": is_night,
             "status": status,
             "is_payroll_locked": False,
         })
+
 
     @classmethod
     def _get_shift_window(cls, shift, dt):
