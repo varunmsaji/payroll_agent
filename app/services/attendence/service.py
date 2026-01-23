@@ -12,6 +12,20 @@ from app.database.leave_database import LeaveRequestDB
 from .engine import AttendanceEngine
 from .policy import AttendancePolicyDB
 from .exceptions import *
+from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
+from zoneinfo import ZoneInfo
+
+from app.database.attendence import AttendanceEventDB, AttendanceDB, ShiftDB
+from app.services.attendence.policy import AttendancePolicyDB
+from app.services.attendence.exceptions import (
+    AttendanceRejected,
+    AttendanceException,
+    EarlyPunchNotAllowed,
+)
+
+IST = ZoneInfo("Asia/Kolkata")
+UTC = ZoneInfo("UTC")
 
 
 class AttendanceService:
@@ -19,6 +33,7 @@ class AttendanceService:
     # =========================================================
     # 🔥 ONLY ENTRY POINT (BIOMETRIC / FACE)
     # =========================================================
+    
     @classmethod
     def process_punch(
         cls,
@@ -28,7 +43,15 @@ class AttendanceService:
         meta: Optional[Dict[str, Any]] = None,
     ):
         meta = meta or {}
-        dt = event_time.date()
+
+        # -------------------------------------------------
+        # ✅ NORMALIZE EVENT TIME → UTC (MANDATORY)
+        # -------------------------------------------------
+        if event_time.tzinfo is None:
+            raise AttendanceRejected("event_time must include timezone")
+
+        event_time = event_time.astimezone(UTC)
+        dt_local = event_time.astimezone(IST).date()
 
         # -------------------------------------------------
         # 🔁 DUPLICATE PUNCH PROTECTION (30s)
@@ -41,81 +64,75 @@ class AttendanceService:
             return {"ignored": True, "reason": "duplicate_punch"}
 
         # -------------------------------------------------
-        # 📄 LOAD POLICY & SHIFT
+        # 📄 LOAD POLICY & SHIFT (LOCAL DATE)
         # -------------------------------------------------
-        policy = AttendancePolicyDB.get_policy_for_date(dt)
-        shift = ShiftDB.get_employee_shift(employee_id, dt)
+        policy = AttendancePolicyDB.get_policy_for_date(dt_local)
+        shift = ShiftDB.get_employee_shift(employee_id, dt_local)
 
         # -------------------------------------------------
-        # 📊 FETCH SESSION EVENTS (ONCE)
+        # 📊 FETCH SESSION EVENTS
         # -------------------------------------------------
-        events = cls._get_session_events(employee_id, dt)
+        events = cls._get_session_events(employee_id, dt_local)
         state = cls._derive_state(events)
 
         # -------------------------------------------------
-        # ⛔ EARLY CHECK-IN (WITH GRACE)
+        # 🕘 COMPUTE SHIFT WINDOW (IST → UTC)
         # -------------------------------------------------
-        if shift and not state["checked_in"]:
-            shift_start = datetime.combine(
-                dt,
-                shift["start_time"],
-                tzinfo=event_time.tzinfo
-            )
+        if shift:
+            shift_start_local = datetime.combine(dt_local, shift["start_time"])
+            shift_start = shift_start_local.replace(tzinfo=IST).astimezone(UTC)
 
-            early_grace = policy.early_checkin_grace_minutes or 0
+            shift_end_local = datetime.combine(dt_local, shift["end_time"])
+            shift_end = shift_end_local.replace(tzinfo=IST).astimezone(UTC)
+
+            # Night shift handling
+            if shift_end <= shift_start:
+                shift_end += timedelta(days=1)
+
+            # -------------------------------------------------
+            # ⛔ EARLY CHECK-IN BLOCK
+            # -------------------------------------------------
+            early_grace = int(policy.early_checkin_grace_minutes or 0)
             earliest_allowed = shift_start - timedelta(minutes=early_grace)
 
             if event_time < earliest_allowed:
                 raise EarlyPunchNotAllowed(
                     f"Early check-in not allowed before "
-                    f"{earliest_allowed.strftime('%H:%M')}"
+                    f"{earliest_allowed.astimezone(IST).strftime('%H:%M')}"
                 )
 
-        # -------------------------------------------------
-        # ⛔ LATE CHECK-IN (WITH GRACE, HARD STOP AT SHIFT END)
-        # -------------------------------------------------
-        if shift and not state["checked_in"]:
-
-            shift_start = datetime.combine(
-                dt,
-                shift["start_time"],
-                tzinfo=event_time.tzinfo
-            )
-
-            shift_end = datetime.combine(
-                dt,
-                shift["end_time"],
-                tzinfo=event_time.tzinfo
-            )
-
-            # 🚫 Never allow check-in after shift end
-            if event_time > shift_end:
-                raise AttendanceRejected(
-                    f"Check-in not allowed after shift end "
-                    f"({shift_end.strftime('%H:%M')})"
-                )
-
-            # ⏱ Allow late check-in only within grace
-            late_grace = policy.late_grace_minutes or 0
+            # -------------------------------------------------
+            # ⛔ LATE CHECK-IN BLOCK (BEYOND GRACE)
+            # -------------------------------------------------
+            late_grace = int(shift.get("late_grace_minutes", 0))
             latest_allowed = shift_start + timedelta(minutes=late_grace)
 
-            if event_time > latest_allowed:
+            if not state["checked_in"] and event_time > latest_allowed:
                 raise AttendanceRejected(
                     f"Late check-in not allowed after "
-                    f"{latest_allowed.strftime('%H:%M')}"
+                    f"{latest_allowed.astimezone(IST).strftime('%H:%M')}"
+                )
+
+            # -------------------------------------------------
+            # ⛔ CHECK-IN AFTER SHIFT END
+            # -------------------------------------------------
+            if not state["checked_in"] and event_time > shift_end:
+                raise AttendanceRejected(
+                    f"Check-in not allowed after shift end "
+                    f"({shift_end.astimezone(IST).strftime('%H:%M')})"
                 )
 
         # -------------------------------------------------
         # 🧠 FACE CONFIDENCE VALIDATION
         # -------------------------------------------------
         confidence = meta.get("confidence")
-        if confidence is not None:
-            min_conf = getattr(policy, "min_face_confidence", None)
-            if min_conf and confidence < min_conf:
-                raise AttendanceRejected("Face confidence too low")
+        min_conf = getattr(policy, "min_face_confidence", None)
+
+        if min_conf and confidence is not None and confidence < min_conf:
+            raise AttendanceRejected("Face confidence too low")
 
         # -------------------------------------------------
-        # 🧠 DECIDE ACTION (IMPLICIT FLOW)
+        # 🧠 DECIDE ACTION (STATE MACHINE)
         # -------------------------------------------------
         had_break = any(ev["event_type"] == "break_start" for ev in events)
 
@@ -132,7 +149,7 @@ class AttendanceService:
             action = "check_out"
 
         # -------------------------------------------------
-        # 📝 INSERT EVENT
+        # 📝 INSERT EVENT (UTC)
         # -------------------------------------------------
         event = AttendanceEventDB.add_event(
             employee_id=employee_id,
@@ -143,18 +160,14 @@ class AttendanceService:
         )
 
         # -------------------------------------------------
-        # 🔄 RECALCULATE ATTENDANCE
+        # 🔄 RECALCULATE ATTENDANCE (LOCAL DATE)
         # -------------------------------------------------
-        cls.recalculate_for_date(employee_id, dt)
+        cls.recalculate_for_date(employee_id, dt_local)
 
-        # -------------------------------------------------
-        # ✅ CONSISTENT RESPONSE
-        # -------------------------------------------------
         return {
             "action": action,
             "event": event,
         }
-
 
             # =========================================================
     # INTERNAL HELPERS
