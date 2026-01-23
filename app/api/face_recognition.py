@@ -90,16 +90,17 @@ async def verify_face(
         "confidence": float(np.clip(1.0 - distance, 0.0, 1.0)),  # ✅ Fixed
         "registered_faces": len(stored_embeddings),
     }
-# =====================================================
-# 3️⃣ FACE ATTENDANCE PUNCH (🔥 MAIN API)
-# =====================================================
 @router.post("/punch")
 async def face_punch(
     file: UploadFile = File(...),
     event_time: Optional[datetime] = Query(None),
 ):
-    event_time = event_time or datetime.utcnow()
-    employee_id = None  # 👈 always defined
+    # -------------------------------------------------
+    # ⏱️ RAW EVENT TIME (keep datetime for service)
+    # -------------------------------------------------
+    raw_event_time = event_time or datetime.utcnow()
+
+    employee_id = None  # always defined
 
     # ---------- IMAGE VALIDATION ----------
     image_bytes = validate_image(file)
@@ -138,16 +139,16 @@ async def face_punch(
             },
         )
 
-    # ✅ Face recognized
+    # ---------- FACE MATCHED ----------
     employee_id = int(result["employee_id"])
-    distance = result["distance"]
+    distance = float(result["distance"])
     confidence = float(np.clip(1.0 - distance, 0.0, 1.0))
 
     # ---------- ATTENDANCE ----------
     try:
         punch_result = AttendanceService.process_punch(
             employee_id=employee_id,
-            event_time=event_time,
+            event_time=raw_event_time,   # ✅ datetime passed to service
             source="face",
             meta={
                 "confidence": confidence,
@@ -156,25 +157,28 @@ async def face_punch(
             },
         )
 
+        # ---------- DUPLICATE / IGNORED ----------
         if punch_result.get("ignored"):
             return {
                 "success": False,
                 "ignored": True,
                 "employee_id": employee_id,
                 "reason": punch_result.get("reason"),
-                "allowed_after": punch_result.get("allowed_after"),
+                "event_time": raw_event_time.isoformat(),
             }
 
+        # ---------- SUCCESS RESPONSE ----------
         return {
             "success": True,
             "employee_id": employee_id,
+            "action": punch_result["action"],
             "confidence": confidence,
             "distance": distance,
-            "action": punch_result["action"],
+            "event_time": raw_event_time.isoformat(),  # ✅ JSON-safe
         }
 
+    # ---------- BUSINESS RULE ERROR ----------
     except AttendanceException as e:
-        # ✅ Business rule rejection
         raise HTTPException(
             status_code=403,
             detail={
@@ -183,12 +187,15 @@ async def face_punch(
             },
         )
 
+    # ---------- REAL SERVER ERROR ----------
     except Exception as e:
-        # ❌ Real server error
+        import traceback
+        traceback.print_exc()  # 🔥 DEBUG FRIENDLY
+
         raise HTTPException(
             status_code=500,
             detail={
                 "employee_id": employee_id,
-                "message": "Failed to mark attendance",
+                "message": str(e),
             },
         )
