@@ -90,7 +90,6 @@ async def verify_face(
         "confidence": float(np.clip(1.0 - distance, 0.0, 1.0)),  # ✅ Fixed
         "registered_faces": len(stored_embeddings),
     }
-
 # =====================================================
 # 3️⃣ FACE ATTENDANCE PUNCH (🔥 MAIN API)
 # =====================================================
@@ -100,6 +99,7 @@ async def face_punch(
     event_time: Optional[datetime] = Query(None),
 ):
     event_time = event_time or datetime.utcnow()
+    employee_id = None  # 👈 always defined
 
     # ---------- IMAGE VALIDATION ----------
     image_bytes = validate_image(file)
@@ -108,24 +108,39 @@ async def face_punch(
     embedding = extract_embedding(image_bytes)
 
     if embedding is None:
-        raise HTTPException(status_code=400, detail="No face detected")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "employee_id": None,
+                "message": "No face detected",
+            },
+        )
 
     all_faces = get_all_faces()
 
     if not all_faces:
-        raise HTTPException(status_code=404, detail="No employees enrolled")
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "employee_id": None,
+                "message": "No employees enrolled",
+            },
+        )
 
     result = identify_face(all_faces, embedding)
 
-    print(f"DEBUG punch result: {result}")  # 🐛 Debug
-
     if not result.get("match"):
-        raise HTTPException(status_code=401, detail="Face not recognized")
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "employee_id": None,
+                "message": "Face not recognized",
+            },
+        )
 
+    # ✅ Face recognized
     employee_id = int(result["employee_id"])
     distance = result["distance"]
-
-    # ✅ Better confidence (threshold=1.0)
     confidence = float(np.clip(1.0 - distance, 0.0, 1.0))
 
     # ---------- ATTENDANCE ----------
@@ -145,6 +160,7 @@ async def face_punch(
             return {
                 "success": False,
                 "ignored": True,
+                "employee_id": employee_id,
                 "reason": punch_result.get("reason"),
                 "allowed_after": punch_result.get("allowed_after"),
             }
@@ -158,50 +174,21 @@ async def face_punch(
         }
 
     except AttendanceException as e:
+        # ✅ Business rule rejection
         raise HTTPException(
             status_code=403,
-            detail=str(e),
+            detail={
+                "employee_id": employee_id,
+                "message": str(e),
+            },
         )
 
     except Exception as e:
+        # ❌ Real server error
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to mark attendance: {str(e)}",
+            detail={
+                "employee_id": employee_id,
+                "message": "Failed to mark attendance",
+            },
         )
-
-# =====================================================
-# 4️⃣ FACE IDENTIFICATION ONLY (NO ATTENDANCE)
-# =====================================================
-@router.post("/identify")
-async def identify_face_only(
-    file: UploadFile = File(...),
-):
-    image_bytes = validate_image(file)
-    embedding = extract_embedding(image_bytes)
-
-    if embedding is None:
-        raise HTTPException(status_code=400, detail="No face detected")
-
-    all_faces = get_all_faces()
-
-    if not all_faces:
-        return {
-            "match": False,
-            "employee_id": None,
-            "message": "No employees enrolled",
-        }
-
-    result = identify_face(all_faces, embedding)
-
-    if not result.get("match"):
-        return {
-            "match": False,
-            "employee_id": None,
-        }
-
-    return {
-        "match": True,
-        "employee_id": int(result["employee_id"]),
-        "distance": result["distance"],
-        "confidence": float(np.clip(1.0 - result["distance"], 0.0, 1.0)),
-    }
