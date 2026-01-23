@@ -125,51 +125,84 @@ class AttendanceService:
         policy = AttendancePolicyDB.get_policy_for_date(dt)
         engine = AttendanceEngine(policy)
 
+        # -------------------------------------------------
+        # LOAD SHIFT
+        # -------------------------------------------------
         shift = ShiftDB.get_employee_shift(employee_id, dt)
-        ws_local, we_local, required_hours, is_night, shift_id = cls._get_shift_window(shift, dt)
 
-        # Convert shift window to UTC
+        ws_local, we_local, required_hours, is_night, shift_id = cls._get_shift_window(
+            shift, dt
+        )
+
+        # -------------------------------------------------
+        # SHIFT WINDOW → UTC (🔥 CRITICAL)
+        # -------------------------------------------------
         ws = ws_local.replace(tzinfo=IST).astimezone(UTC)
         we = we_local.replace(tzinfo=IST).astimezone(UTC)
 
-        # Fetch events safely
+        # -------------------------------------------------
+        # FETCH EVENTS (SAFE WINDOW)
+        # -------------------------------------------------
         events = AttendanceEventDB.get_events_for_window(
             employee_id,
             ws,
-            we + timedelta(hours=12)
+            we + timedelta(hours=12),
         )
 
+        # -------------------------------------------------
+        # ENGINE CALCULATIONS
+        # -------------------------------------------------
         work_sec, break_sec, check_in, check_out = engine.compute_work_and_breaks(events)
 
-        # 🔥 FIX STARTS HERE
+        # 🔥 REQUIRED FIXES
         total_hours = round((work_sec + break_sec) / 3600, 2)
         net_hours = round(work_sec / 3600, 2)
-        # 🔥 FIX ENDS HERE
 
         late_minutes, is_late = engine.compute_late(shift, dt, check_in)
-        early_minutes, is_early = engine.compute_early(shift, dt, check_out)
+        early_minutes, is_early_checkout = engine.compute_early(shift, dt, check_out)
+
+        # ✅ OVERTIME (FIXED & STORED)
+        overtime_minutes, is_overtime = engine.compute_overtime(
+            actual_out=check_out,
+            shift_end=we,
+            late_minutes=late_minutes,
+        )
 
         status = engine.decide_status(net_hours, required_hours)
 
+        # -------------------------------------------------
+        # UPSERT ATTENDANCE (PAYROLL SAFE)
+        # -------------------------------------------------
         AttendanceDB.upsert_full_attendance({
             "employee_id": employee_id,
             "shift_id": shift_id,
             "date": dt,
+
             "check_in": check_in,
             "check_out": check_out,
-            "total_hours": total_hours,      # ✅ REQUIRED
+
+            "total_hours": total_hours,
             "net_hours": net_hours,
+
             "break_minutes": int(break_sec / 60),
             "late_minutes": late_minutes,
             "early_exit_minutes": early_minutes,
+
+            "overtime_minutes": overtime_minutes,
+            "is_overtime": is_overtime,
+
             "is_late": is_late,
-            "is_early_checkout": is_early,
+            "is_early_checkout": is_early_checkout,
+
             "is_weekend": dt.weekday() >= 5,
             "is_holiday": HolidayDB.is_holiday(dt),
             "is_night_shift": is_night,
+
             "status": status,
             "is_payroll_locked": False,
+            "locked_at": None,
         })
+
 
 
     @classmethod
