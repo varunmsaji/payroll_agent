@@ -229,18 +229,27 @@ class AttendanceService:
         print("  existing attendance:", existing)
 
         if existing and existing.get("is_payroll_locked"):
-            print("❌ Payroll locked")
             raise AttendanceLocked("Attendance locked")
 
         shift = ShiftDB.get_employee_shift(employee_id, dt)
         print("  shift:", shift)
 
-        window_start, window_end, required_hours, is_night, shift_id = cls._get_shift_window(
-            shift, dt
+        # -------------------------------------------------
+        # ✅ GET SHIFT WINDOW (LOCAL → UTC)
+        # -------------------------------------------------
+        window_start_local, window_end_local, required_hours, is_night, shift_id = (
+            cls._get_shift_window(shift, dt)
         )
+
+        # 🔥 FIX: convert shift window to UTC
+        window_start = window_start_local.replace(tzinfo=IST).astimezone(UTC)
+        window_end = window_end_local.replace(tzinfo=IST).astimezone(UTC)
 
         extended_window_end = window_end + timedelta(hours=12)
 
+        # -------------------------------------------------
+        # ✅ FETCH EVENTS (UTC SAFE)
+        # -------------------------------------------------
         events = AttendanceEventDB.get_events_for_window(
             employee_id,
             window_start,
@@ -253,8 +262,6 @@ class AttendanceService:
 
         work_sec, break_sec, check_in, check_out = engine.compute_work_and_breaks(events)
 
-        print("  work_sec :", work_sec)
-        print("  break_sec:", break_sec)
         print("  check_in :", check_in)
         print("  check_out:", check_out)
 
@@ -270,12 +277,6 @@ class AttendanceService:
         )
 
         status = engine.decide_status(net_hours, required_hours)
-
-        print("  RESULT → net:", net_hours,
-              "late:", late_minutes,
-              "early:", early_minutes,
-              "ot:", overtime_minutes,
-              "status:", status)
 
         return AttendanceDB.upsert_full_attendance({
             "employee_id": employee_id,
@@ -299,6 +300,7 @@ class AttendanceService:
             "is_payroll_locked": False,
             "locked_at": None,
         })
+
 
     # =========================================================
     # SHIFT WINDOW
