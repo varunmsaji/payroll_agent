@@ -1,7 +1,8 @@
 import requests
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import time
 import os
 
@@ -9,15 +10,17 @@ import os
 # CONFIG
 # =====================================================
 # BASE_URL = "http://localhost:8000"
-BASE_URL ="https://varunmsaji01-hrms-backend-latest.hf.space"
-
+BASE_URL = "https://varunmsaji01-hrms-backend-latest.hf.space"
 
 EMPLOYEE_ID = 36
-DATE = "2026-01-11"
+DATE = "2026-01-23"          # Attendance date (IST business date)
 IMAGE_PATH = "varun_test.jpg"
 
 DATABASE_URL = "postgresql://postgres:t3dPZJwoCApEGgBU@db.fmhhqmmntpnxxqvnffej.supabase.co:5432/postgres"
 USE_SSL = "supabase.co" in DATABASE_URL
+
+IST = ZoneInfo("Asia/Kolkata")
+UTC = ZoneInfo("UTC")
 
 if not os.path.exists(IMAGE_PATH):
     raise RuntimeError("❌ Face image not found")
@@ -62,19 +65,27 @@ def fetch_attendance():
 
 
 # =====================================================
-# FACE PUNCH CALL
+# FACE PUNCH CALL (🔥 CORRECT TIMEZONE HANDLING)
 # =====================================================
 def face_punch(fake_time: str):
-    ts = datetime.fromisoformat(f"{DATE}T{fake_time}").replace(
-        tzinfo=timezone.utc
+    """
+    fake_time = "09:00"  # IST business time
+    """
+
+    # 1️⃣ Create IST datetime
+    ist_dt = datetime.fromisoformat(f"{DATE}T{fake_time}").replace(
+        tzinfo=IST
     )
+
+    # 2️⃣ Convert to UTC (backend expects UTC)
+    utc_dt = ist_dt.astimezone(UTC)
 
     files = {
         "file": ("face.jpg", open(IMAGE_PATH, "rb"), "image/jpeg")
     }
 
     params = {
-        "event_time": ts.isoformat()
+        "event_time": utc_dt.isoformat()
     }
 
     r = requests.post(
@@ -91,7 +102,7 @@ def face_punch(fake_time: str):
 
 
 # =====================================================
-# SCENARIOS
+# TEST SCENARIOS (IST BUSINESS TIMES)
 # =====================================================
 SCENARIOS = [
     {
@@ -99,7 +110,7 @@ SCENARIOS = [
         "events": ["09:00", "13:00", "14:00", "18:00"],
     },
     {
-        "title": "LATE ARRIVAL (12 MIN)",
+        "title": "LATE ARRIVAL (12 MIN – WITHIN GRACE)",
         "events": ["09:12", "13:00", "14:00", "18:00"],
     },
     {
@@ -138,7 +149,7 @@ def print_result(row):
 # RUNNER
 # =====================================================
 def run():
-    print("\n🚀 FACE ATTENDANCE TESTS\n")
+    print("\n🚀 FACE ATTENDANCE TESTS (IST → UTC SAFE)\n")
 
     for i, s in enumerate(SCENARIOS, 1):
         print("=" * 70)
@@ -150,7 +161,7 @@ def run():
         for t in s["events"]:
             code, res = face_punch(t)
             action = res.get("action") if isinstance(res, dict) else None
-            print(f"FACE {t} → HTTP {code} | action={action}")
+            print(f"FACE {t} IST → HTTP {code} | action={action}")
             time.sleep(1.2)
 
         row = fetch_attendance()
