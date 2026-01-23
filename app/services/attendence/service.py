@@ -174,32 +174,24 @@ class AttendanceService:
     # =========================================================
     @classmethod
     def _get_session_events(cls, employee_id, dt: date):
-        print("→ _get_session_events()")
-
         shift = ShiftDB.get_employee_shift(employee_id, dt)
-        print("  shift:", shift)
 
-        window_start, window_end, *_ = cls._get_shift_window(shift, dt)
-        print("  window_start:", window_start)
-        print("  window_end  :", window_end)
+        window_start_local, window_end_local, *_ = cls._get_shift_window(shift, dt)
 
-        policy = AttendancePolicyDB.get_policy_for_date(dt)
-        allowed_start = window_start - timedelta(
-            minutes=policy.early_checkin_grace_minutes
-        )
+        # ✅ Convert to UTC
+        window_start = window_start_local.replace(tzinfo=IST).astimezone(UTC)
+        window_end = window_end_local.replace(tzinfo=IST).astimezone(UTC)
 
+        # ✅ Widen window (VERY IMPORTANT)
+        allowed_start = window_start - timedelta(hours=12)
         extended_window_end = window_end + timedelta(hours=12)
 
-        print("  allowed_start:", allowed_start)
-        print("  extended_end :", extended_window_end)
-
-        events = AttendanceEventDB.get_events_for_window(
+        return AttendanceEventDB.get_events_for_window(
             employee_id,
             allowed_start,
             extended_window_end,
         )
 
-        return events
 
     @staticmethod
     def _derive_state(events: List[Dict[str, Any]]):
