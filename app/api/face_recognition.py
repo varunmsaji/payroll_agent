@@ -20,21 +20,79 @@ from app.services.attendence.exceptions import AttendanceException
 
 router = APIRouter(prefix="/faces", tags=["Face Attendance"])
 
+
+# =====================================================
+# CONFIG
+# =====================================================
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_SIZE_BYTES = 5 * 1024 * 1024
 
-
+# =====================================================
+# UTILS
+# =====================================================
 def validate_image(file: UploadFile) -> bytes:
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="Invalid image type")
 
     data = file.file.read()
+
     if len(data) > MAX_SIZE_BYTES:
         raise HTTPException(status_code=400, detail="Image too large")
 
     file.file.seek(0)
     return data
 
+# =====================================================
+# 1️⃣ REGISTER FACE (ADMIN / ONBOARDING)
+# =====================================================
+@router.post("/register")
+async def register_face(
+    employee_id: int = Query(...),
+    file: UploadFile = File(...),
+):
+    image_bytes = validate_image(file)
+    embedding = extract_embedding(image_bytes)
+
+    if embedding is None:
+        raise HTTPException(status_code=400, detail="No face detected")
+
+    save_face(str(employee_id), embedding)
+
+    return {
+        "success": True,
+        "employee_id": employee_id,
+        "message": "Face registered successfully",
+    }
+
+# =====================================================
+# 2️⃣ VERIFY FACE FOR EMPLOYEE (OPTIONAL)
+# =====================================================
+@router.post("/verify")
+async def verify_face(
+    employee_id: int = Query(...),
+    file: UploadFile = File(...),
+):
+    image_bytes = validate_image(file)
+    embedding = extract_embedding(image_bytes)
+
+    if embedding is None:
+        raise HTTPException(status_code=400, detail="No face detected")
+
+    stored_embeddings = get_faces(str(employee_id))
+
+    if not stored_embeddings:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    match, distance = compare_embeddings(stored_embeddings, embedding)
+
+    return {
+        "success": True,
+        "employee_id": employee_id,
+        "match": match,
+        "distance": distance,
+        "confidence": float(np.clip(1.0 - distance, 0.0, 1.0)),  # ✅ Fixed
+        "registered_faces": len(stored_embeddings),
+    }
 
 @router.post("/punch")
 async def face_punch(
