@@ -1,6 +1,7 @@
 # app/database/shifts_db.py
 
 from psycopg2.extras import RealDictCursor
+
 from app.database.connection import get_connection
 
 

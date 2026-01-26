@@ -1,6 +1,7 @@
 # app/database/employee_db.py
 
 from psycopg2.extras import RealDictCursor
+
 from app.database.connection import get_connection
 
 
@@ -157,9 +158,7 @@ class EmployeeDB:
     def get_hr_user():
         with get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT employee_id FROM employees WHERE designation='HR' LIMIT 1"
-                )
+                cur.execute("SELECT employee_id FROM employees WHERE designation='HR' LIMIT 1")
                 row = cur.fetchone()
                 return row[0] if row else None
 
@@ -167,9 +166,7 @@ class EmployeeDB:
     def get_finance_head():
         with get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT employee_id FROM employees WHERE designation='finance' LIMIT 1"
-                )
+                cur.execute("SELECT employee_id FROM employees WHERE designation='finance' LIMIT 1")
                 row = cur.fetchone()
                 return row[0] if row else None
 

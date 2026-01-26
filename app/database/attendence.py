@@ -1,13 +1,14 @@
-from datetime import date, datetime, timedelta
 import json
+from datetime import date, datetime, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from psycopg2.extras import RealDictCursor
-from zoneinfo import ZoneInfo
 
 from app.database.connection import get_connection
 
 UTC = ZoneInfo("UTC")
+
 
 # ==========================================
 # ATTENDANCE EVENT FUNCTIONS (RAW LOGS)

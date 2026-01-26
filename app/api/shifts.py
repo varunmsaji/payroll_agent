@@ -1,19 +1,21 @@
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from datetime import date, time, timedelta
 from typing import Optional
-from datetime import time, date, timedelta
-from psycopg2.extras import RealDictCursor
 
-from app.database.shifts_db import ShiftDB
+from fastapi import APIRouter, HTTPException, Query
+from psycopg2.extras import RealDictCursor
+from pydantic import BaseModel
+
 from app.database.connection import get_connection
 from app.database.employee_db import EmployeeDB
 from app.database.employee_shift_db import EmployeeShiftDB
+from app.database.shifts_db import ShiftDB
 
 router = APIRouter(prefix="/hrms/shifts", tags=["Shifts"])
 
 # ============================================================
 # 🧱 SCHEMAS
 # ============================================================
+
 
 class ShiftBase(BaseModel):
     shift_name: str
@@ -38,15 +40,17 @@ class ShiftAssignRequest(BaseModel):
     shift_id: int
     effective_from: date
 
+
 # ============================================================
 # 1️⃣ LIST SHIFTS (ADMIN TABLE)
 # ============================================================
+
 
 @router.get("/")
 def list_shifts(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    include_inactive: bool = Query(False)
+    include_inactive: bool = Query(False),
 ):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -55,23 +59,29 @@ def list_shifts(
         cur.execute("SELECT COUNT(*) AS count FROM shifts;")
     else:
         cur.execute("SELECT COUNT(*) AS count FROM shifts WHERE is_active = true;")
-    
+
     total = cur.fetchone()["count"]
     offset = (page - 1) * limit
 
     if include_inactive:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT * FROM shifts
             ORDER BY shift_id DESC
             LIMIT %s OFFSET %s;
-        """, (limit, offset))
+        """,
+            (limit, offset),
+        )
     else:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT * FROM shifts
             WHERE is_active = true
             ORDER BY shift_id DESC
             LIMIT %s OFFSET %s;
-        """, (limit, offset))
+        """,
+            (limit, offset),
+        )
 
     rows = cur.fetchall()
     cur.close()
@@ -79,9 +89,11 @@ def list_shifts(
 
     return {"page": page, "limit": limit, "total": total, "data": rows}
 
+
 # ============================================================
 # ✅ ✅ ✅ 2️⃣ SHIFT ROSTER (✅ MUST BE BEFORE /{shift_id})
 # ============================================================
+
 
 @router.get("/roster")
 def roster(date_: date = Query(default=date.today())):
@@ -89,7 +101,8 @@ def roster(date_: date = Query(default=date.today())):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    cur.execute("""
+    cur.execute(
+        """
         SELECT
             e.employee_id,
             e.first_name,
@@ -109,7 +122,9 @@ def roster(date_: date = Query(default=date.today())):
         WHERE es.effective_from <= %s
           AND (es.effective_to IS NULL OR es.effective_to >= %s)
         ORDER BY s.shift_name, e.first_name;
-    """, (date_, date_))
+    """,
+        (date_, date_),
+    )
 
     rows = cur.fetchall()
     cur.close()
@@ -117,13 +132,10 @@ def roster(date_: date = Query(default=date.today())):
     return rows
 
 
-
-
-
-
 # ============================================================
 # ✅ GET ALL EMPLOYEES FOR A SHIFT (ACTIVE ASSIGNMENT)
 # ============================================================
+
 
 @router.get("/{shift_id}/employees")
 def get_shift_employees(shift_id: int):
@@ -131,7 +143,8 @@ def get_shift_employees(shift_id: int):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    cur.execute("""
+    cur.execute(
+        """
         SELECT
             e.employee_id,
             e.first_name,
@@ -146,7 +159,9 @@ def get_shift_employees(shift_id: int):
         WHERE es.shift_id = %s
           AND es.effective_to IS NULL
         ORDER BY e.first_name;
-    """, (shift_id,))
+    """,
+        (shift_id,),
+    )
 
     rows = cur.fetchall()
     cur.close()
@@ -154,9 +169,11 @@ def get_shift_employees(shift_id: int):
 
     return rows
 
+
 # ============================================================
 # 3️⃣ CREATE SHIFT
 # ============================================================
+
 
 @router.post("/")
 def create_shift(payload: ShiftCreate):
@@ -165,9 +182,11 @@ def create_shift(payload: ShiftCreate):
     except Exception as e:
         raise HTTPException(400, str(e))
 
+
 # ============================================================
 # 4️⃣ GET SINGLE SHIFT  ✅ SAFE NOW
 # ============================================================
+
 
 @router.get("/{shift_id}")
 def get_shift(shift_id: int):
@@ -176,9 +195,11 @@ def get_shift(shift_id: int):
         raise HTTPException(404, "Shift not found")
     return shift
 
+
 # ============================================================
 # 5️⃣ UPDATE SHIFT
 # ============================================================
+
 
 @router.put("/{shift_id}")
 def update_shift(shift_id: int, payload: ShiftUpdate):
@@ -187,9 +208,11 @@ def update_shift(shift_id: int, payload: ShiftUpdate):
 
     return ShiftDB.update_shift(shift_id, payload.dict())
 
+
 # ============================================================
 # 6️⃣ SOFT DELETE SHIFT
 # ============================================================
+
 
 @router.delete("/{shift_id}")
 def delete_shift(shift_id: int):
@@ -198,9 +221,11 @@ def delete_shift(shift_id: int):
         raise HTTPException(404, "Shift not found")
     return {"message": "Shift archived successfully"}
 
+
 # ============================================================
 # ✅ 7️⃣ ASSIGN SHIFT TO EMPLOYEE (PRODUCTION SAFE)
 # ============================================================
+
 
 @router.post("/assign")
 def assign_shift(req: ShiftAssignRequest):
@@ -217,20 +242,26 @@ def assign_shift(req: ShiftAssignRequest):
     try:
         prev_end = req.effective_from - timedelta(days=1)
 
-        cur.execute("""
+        cur.execute(
+            """
             UPDATE employee_shifts
             SET effective_to = %s
             WHERE employee_id = %s
               AND effective_to IS NULL;
-        """, (prev_end, req.employee_id))
+        """,
+            (prev_end, req.employee_id),
+        )
 
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO employee_shifts (
                 employee_id, shift_id, effective_from, effective_to
             )
             VALUES (%s, %s, %s, NULL)
             RETURNING *;
-        """, (req.employee_id, req.shift_id, req.effective_from))
+        """,
+            (req.employee_id, req.shift_id, req.effective_from),
+        )
 
         row = cur.fetchone()
         conn.commit()
@@ -244,9 +275,11 @@ def assign_shift(req: ShiftAssignRequest):
         cur.close()
         conn.close()
 
+
 # ============================================================
 # ✅ 8️⃣ UNASSIGN SHIFT (SAFE)
 # ============================================================
+
 
 @router.delete("/unassign/{employee_id}")
 def unassign_shift(employee_id: int):
@@ -254,11 +287,14 @@ def unassign_shift(employee_id: int):
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("""
+    cur.execute(
+        """
         UPDATE employee_shifts
         SET effective_to = CURRENT_DATE
         WHERE employee_id = %s AND effective_to IS NULL;
-    """, (employee_id,))
+    """,
+        (employee_id,),
+    )
 
     if cur.rowcount == 0:
         cur.close()
@@ -271,9 +307,11 @@ def unassign_shift(employee_id: int):
 
     return {"message": "Shift unassigned successfully"}
 
+
 # ============================================================
 # ✅ 9️⃣ SHIFT HISTORY
 # ============================================================
+
 
 @router.get("/history/{employee_id}")
 def shift_history(employee_id: int):

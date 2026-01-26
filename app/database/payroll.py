@@ -1,6 +1,7 @@
 # app/database/payroll_db.py
 
 from datetime import date
+
 from psycopg2.extras import RealDictCursor
 
 from app.database.connection import get_connection
@@ -16,30 +17,22 @@ class PayrollDB:
         employee_id: int,
         year: int,
         month: int,
-
         working_days: int,
         present_days: int,
         total_hours: float,
-
         gross_salary: float,
         net_salary: float,
-
         basic_pay: float,
         hra_pay: float,
         allowances_pay: float,
-
         overtime_hours: float,
         overtime_pay: float,
-
         lop_days: float,
         lop_deduction: float,
-
         late_penalty: float,
         early_penalty: float,
-
         holiday_pay: float,
         night_shift_allowance: float,
-
         is_finalized: bool = False,
     ):
         with get_connection() as conn:
@@ -130,30 +123,22 @@ class PayrollDB:
                         employee_id,
                         month,
                         year,
-
                         working_days,
                         present_days,
                         total_hours,
-
                         gross_salary,
                         net_salary,
-
                         basic_pay,
                         hra_pay,
                         allowances_pay,
-
                         overtime_hours,
                         overtime_pay,
-
                         lop_days,
                         lop_deduction,
-
                         late_penalty,
                         early_penalty,
-
                         holiday_pay,
                         night_shift_allowance,
-
                         is_finalized,
                     ),
                 )

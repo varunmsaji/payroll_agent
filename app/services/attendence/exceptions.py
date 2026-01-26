@@ -1,5 +1,6 @@
 # app/services/attendance/exceptions.py
 
+
 class AttendanceError(Exception):
     pass
 
@@ -27,6 +28,7 @@ class AttendanceLocked(AttendanceError):
 # =====================================================
 # Attendance rule exceptions (used by process_punch)
 # =====================================================
+
 
 class AttendanceException(Exception):
     """Base attendance exception"""

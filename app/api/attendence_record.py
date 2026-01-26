@@ -1,7 +1,8 @@
+from datetime import datetime
+from typing import Any, Dict, Optional
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from datetime import datetime
-from typing import Optional, Dict, Any
 
 from app.services.attendence import AttendanceService
 from app.services.attendence.exceptions import AttendanceException
@@ -17,9 +18,7 @@ router = APIRouter(
 # =========================================================
 class PunchRequest(BaseModel):
     employee_id: int = Field(..., example=101)
-    event_time: Optional[datetime] = Field(
-        None, example="2026-01-20T09:01:12Z"
-    )
+    event_time: Optional[datetime] = Field(None, example="2026-01-20T09:01:12Z")
 
     # Metadata from device
     device_id: Optional[str] = Field(None, example="FACE-01")

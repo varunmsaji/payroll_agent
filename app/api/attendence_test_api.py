@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Form
 from datetime import datetime
 from typing import Optional
 
-from app.services.attendence import AttendanceService
+from fastapi import APIRouter, Form, HTTPException
+
 from app.database.attendence import AttendanceEventDB, ShiftDB
+from app.services.attendence import AttendanceService
 
 router = APIRouter(
     prefix="/attendance",

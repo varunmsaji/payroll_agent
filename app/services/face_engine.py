@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 from insightface.app import FaceAnalysis
 
-
 # =====================================================
 # INIT INSIGHTFACE (ONCE)
 # =====================================================
@@ -13,8 +12,8 @@ face_app.prepare(ctx_id=0, det_size=(640, 640))
 # =====================================================
 # CONFIG (REALISTIC DEFAULTS)
 # =====================================================
-MIN_FACE_SIZE = 120        # reject tiny / blurry faces
-MATCH_THRESHOLD = 1.0      # L2 distance threshold (normalized embeddings)
+MIN_FACE_SIZE = 120  # reject tiny / blurry faces
+MATCH_THRESHOLD = 1.0  # L2 distance threshold (normalized embeddings)
 
 
 # =====================================================
@@ -41,9 +40,7 @@ def extract_embedding(image_bytes: bytes):
     # Pick LARGEST face (CompreFace behavior)
     # -------------------------------------------------
     faces = sorted(
-        faces,
-        key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]),
-        reverse=True
+        faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]), reverse=True
     )
 
     face = faces[0]
@@ -67,9 +64,7 @@ def extract_embedding(image_bytes: bytes):
 # VERIFY (1:1) — USING MEAN TEMPLATE
 # =====================================================
 def compare_embeddings(
-    known_embeddings: list,
-    unknown_embedding: np.ndarray,
-    threshold: float = MATCH_THRESHOLD
+    known_embeddings: list, unknown_embedding: np.ndarray, threshold: float = MATCH_THRESHOLD
 ):
     """
     Verify face against stored embeddings for ONE employee.
@@ -97,9 +92,7 @@ def compare_embeddings(
 # IDENTIFY (1:N) — USING MEAN TEMPLATE
 # =====================================================
 def identify_face(
-    all_faces: dict,
-    unknown_embedding: np.ndarray,
-    threshold: float = MATCH_THRESHOLD
+    all_faces: dict, unknown_embedding: np.ndarray, threshold: float = MATCH_THRESHOLD
 ):
     """
     Identify employee from face.

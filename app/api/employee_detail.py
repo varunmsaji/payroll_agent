@@ -1,22 +1,23 @@
-from fastapi import APIRouter, HTTPException, Query
 from datetime import date, datetime
-from typing import Optional, List
+from typing import List, Optional
+
+from fastapi import APIRouter, HTTPException, Query
+from psycopg2.extras import RealDictCursor
 from pydantic import BaseModel, EmailStr, constr
 
 from app.database.attendence import AttendanceDB, AttendanceEventDB
+from app.database.connection import get_connection
 from app.database.employee_db import EmployeeDB
 from app.database.employee_shift_db import EmployeeShiftDB
-from app.database.salary import SalaryDB
-from app.database.payroll import PayrollDB
-from app.database.connection import get_connection
-from psycopg2.extras import RealDictCursor
 from app.database.leave_database import (
-    LeaveTypeDB,
-    LeaveBalanceDB,
-    LeaveRequestDB,
-    LeaveHistoryDB,
     EmployeeSalaryDB,
+    LeaveBalanceDB,
+    LeaveHistoryDB,
+    LeaveRequestDB,
+    LeaveTypeDB,
 )
+from app.database.payroll import PayrollDB
+from app.database.salary import SalaryDB
 
 router = APIRouter(prefix="/hrms", tags=["Employee Details"])
 
@@ -25,8 +26,10 @@ router = APIRouter(prefix="/hrms", tags=["Employee Details"])
 # ✅ SCHEMAS (VALIDATION ADDED)
 # ============================================================
 
+
 class ManagerUpdate(BaseModel):
     manager_id: Optional[int] = None
+
 
 class EmployeeCreate(BaseModel):
     first_name: str
@@ -38,6 +41,7 @@ class EmployeeCreate(BaseModel):
     date_of_joining: date
     base_salary: float
     manager_id: Optional[int] = None
+
 
 # ============================================================
 # ✅ 1️⃣ EMPLOYEE BASIC PROFILE
@@ -56,10 +60,7 @@ def employee_profile(employee_id: int):
 # ✅ 1.1 GET ALL EMPLOYEES (WITH PAGINATION ✅)
 # ============================================================
 @router.get("/employees")
-def get_employees(
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100)
-):
+def get_employees(page: int = Query(1, ge=1), limit: int = Query(20, ge=1, le=100)):
     """
     ✅ Production safe with pagination.
     """
@@ -68,12 +69,7 @@ def get_employees(
     start = (page - 1) * limit
     end = start + limit
 
-    return {
-        "page": page,
-        "limit": limit,
-        "total": len(employees),
-        "data": employees[start:end]
-    }
+    return {"page": page, "limit": limit, "total": len(employees), "data": employees[start:end]}
 
 
 # ============================================================
@@ -104,21 +100,14 @@ def assign_manager(employee_id: int, req: ManagerUpdate):
 
     updated = EmployeeDB.set_manager(employee_id, req.manager_id)
 
-    return {
-        "message": "Manager assigned successfully",
-        "employee": updated
-    }
-
+    return {"message": "Manager assigned successfully", "employee": updated}
 
 
 @router.post("/employee", status_code=201)
 def create_employee(payload: EmployeeCreate):
     try:
         employee = EmployeeDB.add_employee(payload.dict())
-        return {
-            "message": "Employee created successfully",
-            "employee": employee
-        }
+        return {"message": "Employee created successfully", "employee": employee}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -173,8 +162,7 @@ def time_summary(employee_id: int):
     shift_end = shift["end_time"]
 
     shift_duration_hours = (
-        datetime.combine(date.today(), shift_end)
-        - datetime.combine(date.today(), shift_start)
+        datetime.combine(date.today(), shift_end) - datetime.combine(date.today(), shift_start)
     ).seconds / 3600
 
     late_count = 0
@@ -268,17 +256,15 @@ def full_employee_details(employee_id: int):
         "events": employee_events(employee_id),
         "salary_structure": employee_salary(employee_id),
         "latest_payroll": latest_payroll(employee_id),
-        "payroll_history": payroll_history(employee_id)
+        "payroll_history": payroll_history(employee_id),
     }
-
-
 
 
 @router.get("/employees/ui")
 def employees_for_ui(
     search: Optional[str] = Query(None),
     department: Optional[str] = Query(None),
-    status: Optional[str] = Query(None)
+    status: Optional[str] = Query(None),
 ):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -331,12 +317,15 @@ def employee_leaves(employee_id: int):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    cur.execute("""
+    cur.execute(
+        """
         SELECT *
         FROM leave_requests
         WHERE employee_id = %s
         ORDER BY start_date DESC
-    """, (employee_id,))
+    """,
+        (employee_id,),
+    )
 
     rows = cur.fetchall()
     cur.close()
@@ -344,15 +333,13 @@ def employee_leaves(employee_id: int):
     return rows
 
 
-
-
-
 @router.get("/payroll/ui-list")
 def payroll_ui_list(month: int, year: int):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    cur.execute("""
+    cur.execute(
+        """
         SELECT 
             p.employee_id,
             e.first_name || ' ' || e.last_name AS employee,
@@ -364,7 +351,9 @@ def payroll_ui_list(month: int, year: int):
         JOIN employees e ON e.employee_id = p.employee_id
         WHERE p.month = %s AND p.year = %s
         ORDER BY e.first_name
-    """, (month, year))
+    """,
+        (month, year),
+    )
 
     rows = cur.fetchall()
     cur.close()
@@ -381,7 +370,8 @@ def leave_balance(employee_id: int):
         conn = get_connection()
         cur = conn.cursor()
 
-        cur.execute("""
+        cur.execute(
+            """
         SELECT 
             lt.name AS leave_type,
             lb.year,
@@ -394,8 +384,9 @@ def leave_balance(employee_id: int):
             ON lt.leave_type_id = lb.leave_type_id
         WHERE lb.employee_id = %s
         ORDER BY lb.year DESC, lt.name;
-    """, (employee_id,))
-
+    """,
+            (employee_id,),
+        )
 
         rows = cur.fetchall()
         cur.close()
@@ -403,17 +394,18 @@ def leave_balance(employee_id: int):
 
         result = []
         for row in rows:
-            result.append({
-                "leave_type": row[0],
-                "year": row[1],
-                "total_quota": float(row[2]),
-                "used": float(row[3]),
-                "remaining": float(row[4]),
-                "carry_forwarded": float(row[5]),
-            })
+            result.append(
+                {
+                    "leave_type": row[0],
+                    "year": row[1],
+                    "total_quota": float(row[2]),
+                    "used": float(row[3]),
+                    "remaining": float(row[4]),
+                    "carry_forwarded": float(row[5]),
+                }
+            )
 
         return result
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-

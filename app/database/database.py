@@ -1,6 +1,7 @@
 import psycopg2
-from psycopg2.extras import RealDictCursor
 from connection import get_connection
+from psycopg2.extras import RealDictCursor
+
 # ============================================================
 # DATABASE CONFIG
 # ============================================================
@@ -16,7 +17,8 @@ def create_tables():
     # ============================================================
     # EMPLOYEES
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS employees (
         employee_id SERIAL PRIMARY KEY,
         first_name VARCHAR(100),
@@ -31,12 +33,14 @@ def create_tables():
         status VARCHAR(20) DEFAULT 'active',
         created_at TIMESTAMP DEFAULT NOW()
     );
-    """)
+    """
+    )
 
     # ============================================================
     # SHIFTS
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS shifts (
         shift_id SERIAL PRIMARY KEY,
         shift_name VARCHAR(100) NOT NULL,
@@ -49,12 +53,14 @@ def create_tables():
         is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT NOW()
     );
-    """)
+    """
+    )
 
     # ============================================================
     # EMPLOYEE SHIFTS
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS employee_shifts (
         id SERIAL PRIMARY KEY,
         employee_id INT REFERENCES employees(employee_id) ON DELETE CASCADE,
@@ -63,12 +69,14 @@ def create_tables():
         effective_to DATE,
         created_at TIMESTAMP DEFAULT NOW()
     );
-    """)
+    """
+    )
 
     # ============================================================
     # ATTENDANCE EVENTS (RAW)
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS attendance_events (
         event_id SERIAL PRIMARY KEY,
         employee_id INT REFERENCES employees(employee_id) ON DELETE CASCADE,
@@ -78,12 +86,14 @@ def create_tables():
         meta JSONB,
         created_at TIMESTAMP DEFAULT NOW()
     );
-    """)
+    """
+    )
 
     # ============================================================
     # ATTENDANCE (PROCESSED)
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS attendance (
         attendance_id SERIAL PRIMARY KEY,
         employee_id INT REFERENCES employees(employee_id) ON DELETE CASCADE,
@@ -109,12 +119,14 @@ def create_tables():
         created_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(employee_id, date)
     );
-    """)
+    """
+    )
 
     # ============================================================
     # HOLIDAYS
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS holidays (
         holiday_id SERIAL PRIMARY KEY,
         holiday_date DATE UNIQUE,
@@ -122,12 +134,14 @@ def create_tables():
         is_optional BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT NOW()
     );
-    """)
+    """
+    )
 
     # ============================================================
     # SALARY STRUCTURE
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS salary_structure (
         id SERIAL PRIMARY KEY,
         employee_id INT REFERENCES employees(employee_id) ON DELETE CASCADE,
@@ -139,12 +153,14 @@ def create_tables():
         effective_to DATE,
         created_at TIMESTAMP DEFAULT NOW()
     );
-    """)
+    """
+    )
 
     # ============================================================
     # PAYROLL
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS payroll (
         payroll_id SERIAL PRIMARY KEY,
         employee_id INT REFERENCES employees(employee_id) ON DELETE CASCADE,
@@ -164,12 +180,14 @@ def create_tables():
         generated_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(employee_id, month, year)
     );
-    """)
+    """
+    )
 
     # ============================================================
     # PAYROLL POLICIES
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS payroll_policies (
         id SERIAL PRIMARY KEY,
         late_grace_minutes INT DEFAULT 0,
@@ -181,12 +199,14 @@ def create_tables():
         active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT NOW()
     );
-    """)
+    """
+    )
 
     # ============================================================
     # LEAVE TYPES
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS leave_types (
         leave_type_id SERIAL PRIMARY KEY,
         name VARCHAR(50) NOT NULL,
@@ -196,12 +216,14 @@ def create_tables():
         carry_forward BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT NOW()
     );
-    """)
+    """
+    )
 
     # ============================================================
     # EMPLOYEE LEAVE BALANCE
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS employee_leave_balance (
         id SERIAL PRIMARY KEY,
         employee_id INT REFERENCES employees(employee_id) ON DELETE CASCADE,
@@ -214,12 +236,14 @@ def create_tables():
         created_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(employee_id, leave_type_id, year)
     );
-    """)
+    """
+    )
 
     # ============================================================
     # LEAVE REQUESTS
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS leave_requests (
         leave_id SERIAL PRIMARY KEY,
         employee_id INT REFERENCES employees(employee_id) ON DELETE CASCADE,
@@ -233,12 +257,14 @@ def create_tables():
         approved_by INT REFERENCES employees(employee_id),
         approved_on TIMESTAMP
     );
-    """)
+    """
+    )
 
     # ============================================================
     # LEAVE HISTORY (IMMUTABLE)
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS leave_history (
         id SERIAL PRIMARY KEY,
         employee_id INT REFERENCES employees(employee_id),
@@ -248,12 +274,14 @@ def create_tables():
         total_days DECIMAL(5,2) NOT NULL,
         recorded_on TIMESTAMP DEFAULT NOW()
     );
-    """)
+    """
+    )
 
     # ============================================================
     # WORKFLOWS
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS workflows (
         id SERIAL PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
@@ -261,12 +289,14 @@ def create_tables():
         is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT NOW()
     );
-    """)
+    """
+    )
 
     # ============================================================
     # WORKFLOW STEPS
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS workflow_steps (
         id SERIAL PRIMARY KEY,
         workflow_id INT REFERENCES workflows(id) ON DELETE CASCADE,
@@ -276,12 +306,14 @@ def create_tables():
         created_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(workflow_id, step_order)
     );
-    """)
+    """
+    )
 
     # ============================================================
     # APPROVAL LOGS
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS approval_logs (
         id SERIAL PRIMARY KEY,
         module VARCHAR(50) NOT NULL,
@@ -295,12 +327,14 @@ def create_tables():
         created_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(module, request_id, step_order)
     );
-    """)
+    """
+    )
 
     # ============================================================
     # REQUEST STATUS
     # ============================================================
-    cur.execute("""
+    cur.execute(
+        """
     CREATE TABLE IF NOT EXISTS request_status (
         id SERIAL PRIMARY KEY,
         module VARCHAR(50) NOT NULL,
@@ -309,13 +343,15 @@ def create_tables():
         updated_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(module, request_id)
     );
-    """)
+    """
+    )
 
     conn.commit()
     cur.close()
     conn.close()
 
     print("✅ ALL HRMS TABLES CREATED SUCCESSFULLY")
+
 
 # ============================================================
 # MAIN

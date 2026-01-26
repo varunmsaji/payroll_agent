@@ -1,6 +1,8 @@
+from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+
 from app.database import workflow_database as workflow_db
 
 router = APIRouter(prefix="/workflow", tags=["Workflow Engine"])
@@ -41,11 +43,10 @@ class Action(BaseModel):
 # ✅ ROUTES – ADMIN MANAGEMENT
 # ================================
 
+
 @router.post("/create")
 def create_workflow(req: WorkflowCreate):
-    wf_id = workflow_db.create_workflow(
-        req.name, req.module, [s.dict() for s in req.steps]
-    )
+    wf_id = workflow_db.create_workflow(req.name, req.module, [s.dict() for s in req.steps])
     return {"message": "Workflow created", "workflow_id": wf_id}
 
 
@@ -144,6 +145,7 @@ def pending_for_approver(approver_id: int):
 # ✅ ROUTES – RUNTIME EXECUTION
 # ================================
 
+
 # ✅ AUTO-START WORKFLOW (used by leaves / other modules)
 @router.post("/{module}/start/{request_id}")
 def start_workflow(module: str, request_id: int, req: StartWorkflow):
@@ -154,10 +156,7 @@ def start_workflow(module: str, request_id: int, req: StartWorkflow):
 
     try:
         result = workflow_db.start_workflow(
-            module,
-            request_id,
-            wf["id"],
-            req.employee_id   # ✅ used for manager resolution
+            module, request_id, wf["id"], req.employee_id  # ✅ used for manager resolution
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -176,10 +175,7 @@ def approve(module: str, request_id: int, req: Action):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    return {
-        "message": "Step Approved",
-        "result": result
-    }
+    return {"message": "Step Approved", "result": result}
 
 
 @router.post("/{module}/{request_id}/reject")

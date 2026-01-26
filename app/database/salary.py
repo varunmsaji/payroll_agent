@@ -2,6 +2,7 @@
 
 from datetime import date
 from typing import Optional
+
 from psycopg2.extras import RealDictCursor
 
 from app.database.connection import get_connection

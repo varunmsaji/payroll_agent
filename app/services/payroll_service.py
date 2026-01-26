@@ -1,9 +1,9 @@
 from datetime import date, timedelta
-from typing import Dict, Any, Tuple
+from typing import Any, Dict, Tuple
 
 from app.database.connection import get_connection
-from app.database.salary import SalaryDB
 from app.database.payroll import PayrollDB, PayrollPolicyDB
+from app.database.salary import SalaryDB
 
 
 class PayrollService:
@@ -88,31 +88,23 @@ class PayrollService:
                 employee_id=employee_id,
                 year=year,
                 month=month,
-
                 working_days=0,
                 present_days=0,
                 total_hours=0,
-
                 gross_salary=gross_monthly,
                 net_salary=0,
-
                 basic_pay=basic,
                 hra_pay=hra,
                 allowances_pay=allowances,
-
                 overtime_hours=0,
                 overtime_pay=0,
-
                 lop_days=0,
                 lop_deduction=0,
-
                 late_penalty=0,
                 early_penalty=0,
-
                 holiday_pay=0,
                 night_shift_allowance=0,
-
-                is_finalized=False
+                is_finalized=False,
             )
 
             return {"payroll": payroll_row, "reason": "No working days"}
@@ -122,8 +114,9 @@ class PayrollService:
         # ---------------------------------------------------------
         # ✅ 5️⃣ LATE + EARLY EXIT → LOP
         # ---------------------------------------------------------
-        combined_late_early = max(0, total_late_minutes - late_grace) + \
-                              max(0, total_early_minutes - early_grace)
+        combined_late_early = max(0, total_late_minutes - late_grace) + max(
+            0, total_early_minutes - early_grace
+        )
 
         extra_lop_days = 0.5 if combined_late_early >= late_lop_threshold else 0
         total_lop_days = lop_days_from_absent + extra_lop_days
@@ -169,31 +162,23 @@ class PayrollService:
             employee_id=employee_id,
             year=year,
             month=month,
-
             working_days=working_days,
             present_days=paid_days,
             total_hours=total_net_hours,
-
             gross_salary=gross_monthly,
             net_salary=net_salary,
-
             basic_pay=basic,
             hra_pay=hra,
             allowances_pay=allowances,
-
             overtime_hours=overtime_hours,
             overtime_pay=overtime_pay,
-
             lop_days=total_lop_days,
             lop_deduction=lop_amount,
-
             late_penalty=float(max(0, total_late_minutes - late_grace)),
             early_penalty=float(max(0, total_early_minutes - early_grace)),
-
             holiday_pay=holiday_pay,
             night_shift_allowance=night_shift_bonus,
-
-            is_finalized=False
+            is_finalized=False,
         )
 
         # ---------------------------------------------------------
@@ -229,7 +214,9 @@ class PayrollService:
     # ============================================================
 
     @classmethod
-    def _get_attendance_summary(cls, employee_id: int, start_date: date, end_date: date) -> Dict[str, Any]:
+    def _get_attendance_summary(
+        cls, employee_id: int, start_date: date, end_date: date
+    ) -> Dict[str, Any]:
 
         conn = get_connection()
         cur = conn.cursor()

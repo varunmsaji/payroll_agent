@@ -1,13 +1,13 @@
 # app/services/attendence/service.py
 
-from datetime import datetime, date, time, timedelta
-from typing import List, Dict, Any, Optional
+from datetime import date, datetime, time, timedelta
+from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from app.database.attendence import AttendanceDB, AttendanceEventDB, ShiftDB, HolidayDB
+from app.database.attendence import AttendanceDB, AttendanceEventDB, HolidayDB, ShiftDB
 from app.services.attendence.engine import AttendanceEngine
+from app.services.attendence.exceptions import AttendanceLocked, AttendanceRejected
 from app.services.attendence.policy import AttendancePolicyDB
-from app.services.attendence.exceptions import AttendanceRejected, AttendanceLocked
 
 IST = ZoneInfo("Asia/Kolkata")
 UTC = ZoneInfo("UTC")
@@ -120,6 +120,7 @@ class AttendanceService:
                 state["on_break"] = False
 
         return state
+
     @classmethod
     def recalculate_for_date(cls, employee_id: int, dt: date):
         policy = AttendancePolicyDB.get_policy_for_date(dt)
@@ -130,9 +131,7 @@ class AttendanceService:
         # -------------------------------------------------
         shift = ShiftDB.get_employee_shift(employee_id, dt)
 
-        ws_local, we_local, required_hours, is_night, shift_id = cls._get_shift_window(
-            shift, dt
-        )
+        ws_local, we_local, required_hours, is_night, shift_id = cls._get_shift_window(shift, dt)
 
         # -------------------------------------------------
         # SHIFT WINDOW → UTC (🔥 CRITICAL)
@@ -173,37 +172,30 @@ class AttendanceService:
         # -------------------------------------------------
         # UPSERT ATTENDANCE (PAYROLL SAFE)
         # -------------------------------------------------
-        AttendanceDB.upsert_full_attendance({
-            "employee_id": employee_id,
-            "shift_id": shift_id,
-            "date": dt,
-
-            "check_in": check_in,
-            "check_out": check_out,
-
-            "total_hours": total_hours,
-            "net_hours": net_hours,
-
-            "break_minutes": int(break_sec / 60),
-            "late_minutes": late_minutes,
-            "early_exit_minutes": early_minutes,
-
-            "overtime_minutes": overtime_minutes,
-            "is_overtime": is_overtime,
-
-            "is_late": is_late,
-            "is_early_checkout": is_early_checkout,
-
-            "is_weekend": dt.weekday() >= 5,
-            "is_holiday": HolidayDB.is_holiday(dt),
-            "is_night_shift": is_night,
-
-            "status": status,
-            "is_payroll_locked": False,
-            "locked_at": None,
-        })
-
-
+        AttendanceDB.upsert_full_attendance(
+            {
+                "employee_id": employee_id,
+                "shift_id": shift_id,
+                "date": dt,
+                "check_in": check_in,
+                "check_out": check_out,
+                "total_hours": total_hours,
+                "net_hours": net_hours,
+                "break_minutes": int(break_sec / 60),
+                "late_minutes": late_minutes,
+                "early_exit_minutes": early_minutes,
+                "overtime_minutes": overtime_minutes,
+                "is_overtime": is_overtime,
+                "is_late": is_late,
+                "is_early_checkout": is_early_checkout,
+                "is_weekend": dt.weekday() >= 5,
+                "is_holiday": HolidayDB.is_holiday(dt),
+                "is_night_shift": is_night,
+                "status": status,
+                "is_payroll_locked": False,
+                "locked_at": None,
+            }
+        )
 
     @classmethod
     def _get_shift_window(cls, shift, dt):

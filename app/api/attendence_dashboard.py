@@ -1,9 +1,12 @@
-from fastapi import APIRouter
 from datetime import date
+
+from fastapi import APIRouter
+
 from app.database.attendence import AttendanceDB
-from app.database.employee_shift_db import EmployeeShiftDB
 from app.database.employee_db import EmployeeDB
+from app.database.employee_shift_db import EmployeeShiftDB
 from app.database.shifts_db import ShiftDB
+
 router = APIRouter(prefix="/hrms", tags=["Dashboard Stats"])
 
 
@@ -66,15 +69,17 @@ def today_attendance_table():
         shift = EmployeeShiftDB.get_current_shift(emp["employee_id"])
         shift_name = shift["shift_name"] if shift else None
 
-        final_list.append({
-            "employee_id": emp["employee_id"],
-            "name": f"{emp['first_name']} {emp['last_name']}",
-            "shift": shift_name,
-            "check_in": att["check_in"],
-            "check_out": att["check_out"],
-            "total_hours": att["total_hours"],
-            "late_minutes": att["late_minutes"],
-            "overtime_minutes": att["overtime_minutes"],
-        })
+        final_list.append(
+            {
+                "employee_id": emp["employee_id"],
+                "name": f"{emp['first_name']} {emp['last_name']}",
+                "shift": shift_name,
+                "check_in": att["check_in"],
+                "check_out": att["check_out"],
+                "total_hours": att["total_hours"],
+                "late_minutes": att["late_minutes"],
+                "overtime_minutes": att["overtime_minutes"],
+            }
+        )
 
     return final_list

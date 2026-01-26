@@ -1,0 +1,13 @@
+# Test artifacts
+htmlcov/
+.coverage
+coverage.xml
+.pytest_cache/
+*.cover
+.hypothesis/
+
+# Test database
+test.db
+test.db-journal
+*.sqlite
+*.sqlite3

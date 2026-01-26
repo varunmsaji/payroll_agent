@@ -10,17 +10,17 @@ Features:
 - Request context tracking with unique request IDs
 """
 
-import logging
-import sys
-import os
 import json
+import logging
+import os
+import sys
 import traceback
-from pathlib import Path
+import uuid
+from contextvars import ContextVar
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
-from typing import Optional, Dict, Any
-from contextvars import ContextVar
-import uuid
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 # ============================================================
 # CONFIGURATION
@@ -46,9 +46,10 @@ request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 # CUSTOM FORMATTERS
 # ============================================================
 
+
 class DetailedFormatter(logging.Formatter):
     """Human-readable detailed formatter for console and file output."""
-    
+
     def format(self, record: logging.LogRecord) -> str:
         # Add request ID if available
         request_id = request_id_var.get()
@@ -56,17 +57,17 @@ class DetailedFormatter(logging.Formatter):
             record.request_id = f"[{request_id[:8]}]"
         else:
             record.request_id = ""
-        
+
         # Add exception info if present
         if record.exc_info:
             record.exc_text = self.formatException(record.exc_info)
-        
+
         return super().format(record)
 
 
 class JSONFormatter(logging.Formatter):
     """Structured JSON formatter for production logging."""
-    
+
     def format(self, record: logging.LogRecord) -> str:
         log_data: Dict[str, Any] = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -78,19 +79,21 @@ class JSONFormatter(logging.Formatter):
             "message": record.getMessage(),
             "request_id": request_id_var.get() or None,
         }
-        
+
         # Add extra fields if present
         if hasattr(record, "extra_data"):
             log_data["data"] = record.extra_data
-        
+
         # Add exception info if present
         if record.exc_info:
             log_data["exception"] = {
                 "type": record.exc_info[0].__name__ if record.exc_info[0] else None,
                 "message": str(record.exc_info[1]) if record.exc_info[1] else None,
-                "traceback": traceback.format_exception(*record.exc_info) if record.exc_info[0] else None,
+                "traceback": (
+                    traceback.format_exception(*record.exc_info) if record.exc_info[0] else None
+                ),
             }
-        
+
         return json.dumps(log_data, default=str, ensure_ascii=False)
 
 
@@ -112,23 +115,20 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 def get_logger(
-    name: str,
-    log_file: Optional[str] = None,
-    enable_json: bool = True,
-    enable_console: bool = True
+    name: str, log_file: Optional[str] = None, enable_json: bool = True, enable_console: bool = True
 ) -> logging.Logger:
     """
     Get a configured logger with console and file handlers.
-    
+
     Args:
         name: Logger name (usually __name__)
         log_file: Optional specific log file name (e.g., "attendance.log")
         enable_json: Enable JSON log file for structured logging
         enable_console: Enable console output
-    
+
     Returns:
         Configured logger instance
-    
+
     Example:
         logger = get_logger(__name__, "attendance.log")
         logger.info("Processing attendance for employee", extra={"extra_data": {"employee_id": 123}})
@@ -137,16 +137,16 @@ def get_logger(
     cache_key = f"{name}_{log_file}"
     if cache_key in _logger_cache:
         return _logger_cache[cache_key]
-    
+
     logger = logging.getLogger(name)
-    
+
     # Only configure if this logger doesn't have handlers yet
     if logger.handlers:
         return logger
-    
+
     logger.setLevel(DEFAULT_LOG_LEVEL)
     logger.propagate = False  # Prevent duplicate logs from parent loggers
-    
+
     # --------------------------------------------------------
     # Console Handler (human-readable)
     # --------------------------------------------------------
@@ -156,7 +156,7 @@ def get_logger(
         console_formatter = DetailedFormatter(DETAILED_FORMAT, datefmt=DATE_FORMAT)
         console_handler.setFormatter(console_formatter)
         logger.addHandler(console_handler)
-    
+
     # --------------------------------------------------------
     # Main File Handler (human-readable, rotating)
     # --------------------------------------------------------
@@ -166,50 +166,41 @@ def get_logger(
         # Derive file name from module name
         module_name = name.split(".")[-1]
         file_name = f"{module_name}.log"
-    
+
     file_handler = RotatingFileHandler(
-        LOG_DIR / file_name,
-        maxBytes=MAX_BYTES,
-        backupCount=BACKUP_COUNT,
-        encoding="utf-8"
+        LOG_DIR / file_name, maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT, encoding="utf-8"
     )
     file_handler.setLevel(FILE_LOG_LEVEL)
     file_formatter = DetailedFormatter(DETAILED_FORMAT, datefmt=DATE_FORMAT)
     file_handler.setFormatter(file_formatter)
     logger.addHandler(file_handler)
-    
+
     # --------------------------------------------------------
     # JSON File Handler (structured, for production parsing)
     # --------------------------------------------------------
     if enable_json:
         json_file_name = file_name.replace(".log", ".json.log")
         json_handler = RotatingFileHandler(
-            LOG_DIR / json_file_name,
-            maxBytes=MAX_BYTES,
-            backupCount=BACKUP_COUNT,
-            encoding="utf-8"
+            LOG_DIR / json_file_name, maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT, encoding="utf-8"
         )
         json_handler.setLevel(FILE_LOG_LEVEL)
         json_handler.setFormatter(JSONFormatter())
         logger.addHandler(json_handler)
-    
+
     # --------------------------------------------------------
     # Error File Handler (errors only, all modules)
     # --------------------------------------------------------
     error_handler = RotatingFileHandler(
-        LOG_DIR / "errors.log",
-        maxBytes=MAX_BYTES,
-        backupCount=BACKUP_COUNT,
-        encoding="utf-8"
+        LOG_DIR / "errors.log", maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT, encoding="utf-8"
     )
     error_handler.setLevel(logging.ERROR)
     error_formatter = DetailedFormatter(DETAILED_FORMAT, datefmt=DATE_FORMAT)
     error_handler.setFormatter(error_formatter)
     logger.addHandler(error_handler)
-    
+
     # Cache the logger
     _logger_cache[cache_key] = logger
-    
+
     return logger
 
 
@@ -217,13 +208,14 @@ def get_logger(
 # REQUEST ID MANAGEMENT
 # ============================================================
 
+
 def set_request_id(request_id: Optional[str] = None) -> str:
     """
     Set or generate a request ID for the current context.
-    
+
     Args:
         request_id: Optional existing request ID. If None, generates a new UUID.
-    
+
     Returns:
         The request ID that was set.
     """
@@ -247,21 +239,17 @@ def clear_request_id() -> None:
 # LOGGING HELPERS
 # ============================================================
 
-def log_with_context(
-    logger: logging.Logger,
-    level: int,
-    message: str,
-    **context: Any
-) -> None:
+
+def log_with_context(logger: logging.Logger, level: int, message: str, **context: Any) -> None:
     """
     Log a message with additional context data.
-    
+
     Args:
         logger: Logger instance
         level: Logging level (e.g., logging.INFO)
         message: Log message
         **context: Additional context to include in structured logs
-    
+
     Example:
         log_with_context(logger, logging.INFO, "User logged in", user_id=123, ip="1.2.3.4")
     """
@@ -269,21 +257,14 @@ def log_with_context(
     logger.log(level, message, extra=extra)
 
 
-def log_function_entry(
-    logger: logging.Logger,
-    func_name: str,
-    **params: Any
-) -> None:
+def log_function_entry(logger: logging.Logger, func_name: str, **params: Any) -> None:
     """Log function entry with parameters."""
     sanitized_params = _sanitize_params(params)
     logger.debug(f"ENTER: {func_name}", extra={"extra_data": {"params": sanitized_params}})
 
 
 def log_function_exit(
-    logger: logging.Logger,
-    func_name: str,
-    result: Any = None,
-    duration_ms: Optional[float] = None
+    logger: logging.Logger, func_name: str, result: Any = None, duration_ms: Optional[float] = None
 ) -> None:
     """Log function exit with optional result and duration."""
     data = {}
@@ -295,14 +276,11 @@ def log_function_exit(
 
 
 def log_error(
-    logger: logging.Logger,
-    message: str,
-    exception: Optional[Exception] = None,
-    **context: Any
+    logger: logging.Logger, message: str, exception: Optional[Exception] = None, **context: Any
 ) -> None:
     """
     Log an error with full context and exception details.
-    
+
     Args:
         logger: Logger instance
         message: Error message
@@ -322,11 +300,11 @@ def log_db_query(
     table: str,
     params: Optional[Dict] = None,
     row_count: Optional[int] = None,
-    duration_ms: Optional[float] = None
+    duration_ms: Optional[float] = None,
 ) -> None:
     """
     Log database query with details.
-    
+
     Args:
         logger: Logger instance
         query_type: Type of query (SELECT, INSERT, UPDATE, DELETE)
@@ -345,7 +323,7 @@ def log_db_query(
         data["row_count"] = row_count
     if duration_ms is not None:
         data["duration_ms"] = round(duration_ms, 2)
-    
+
     logger.debug(f"DB {query_type}: {table}", extra={"extra_data": data})
 
 
@@ -354,20 +332,28 @@ def log_db_query(
 # ============================================================
 
 SENSITIVE_KEYS = {
-    "password", "secret", "token", "api_key", "apikey", 
-    "authorization", "auth", "credential", "ssn", "credit_card"
+    "password",
+    "secret",
+    "token",
+    "api_key",
+    "apikey",
+    "authorization",
+    "auth",
+    "credential",
+    "ssn",
+    "credit_card",
 }
 
 
 def _sanitize_params(params: Dict[str, Any]) -> Dict[str, Any]:
     """
     Sanitize sensitive parameters for logging.
-    
+
     Masks values for keys that appear to be sensitive.
     """
     if not params:
         return {}
-    
+
     sanitized = {}
     for key, value in params.items():
         key_lower = key.lower()
@@ -377,13 +363,14 @@ def _sanitize_params(params: Dict[str, Any]) -> Dict[str, Any]:
             sanitized[key] = _sanitize_params(value)
         else:
             sanitized[key] = value
-    
+
     return sanitized
 
 
 # ============================================================
 # MODULE LOGGERS (Pre-configured for convenience)
 # ============================================================
+
 
 def get_api_logger(module_name: str = "api") -> logging.Logger:
     """Get logger for API layer."""

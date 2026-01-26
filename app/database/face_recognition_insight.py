@@ -1,4 +1,5 @@
 import numpy as np
+
 from app.database.connection import get_connection
 
 
@@ -9,14 +10,16 @@ def init_db():
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("""
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS faces (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             employee_id TEXT NOT NULL,
             embedding BYTEA NOT NULL,
             created_at TIMESTAMPTZ DEFAULT now()
         )
-    """)
+    """
+    )
 
     conn.commit()
     cur.close()
@@ -38,7 +41,7 @@ def save_face(employee_id: str, embedding: np.ndarray):
         (
             employee_id,
             embedding.astype("float32").tobytes(),
-        )
+        ),
     )
 
     conn.commit()
@@ -59,17 +62,14 @@ def get_faces(employee_id: str):
         FROM faces
         WHERE employee_id = %s
         """,
-        (employee_id,)
+        (employee_id,),
     )
 
     rows = cur.fetchall()
     cur.close()
     conn.close()
 
-    return [
-        np.frombuffer(row["embedding"], dtype="float32")
-        for row in rows
-    ]
+    return [np.frombuffer(row["embedding"], dtype="float32") for row in rows]
 
 
 # =====================================================

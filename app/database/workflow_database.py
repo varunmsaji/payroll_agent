@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Optional
+
 from psycopg2.extras import RealDictCursor
 
 from app.database.connection import get_connection
@@ -16,7 +17,8 @@ def create_workflow_tables():
     with get_connection() as conn:
         with conn.cursor() as cur:
 
-            cur.execute("""
+            cur.execute(
+                """
             CREATE TABLE IF NOT EXISTS workflows (
                 id SERIAL PRIMARY KEY,
                 name VARCHAR(100) NOT NULL,
@@ -57,10 +59,12 @@ def create_workflow_tables():
                 updated_at TIMESTAMP DEFAULT NOW(),
                 UNIQUE (module, request_id)
             );
-            """)
+            """
+            )
 
             # DB-level safety: only one active workflow per module
-            cur.execute("""
+            cur.execute(
+                """
             DO $$
             BEGIN
                 IF NOT EXISTS (
@@ -74,7 +78,8 @@ def create_workflow_tables():
                     WHERE is_active = TRUE;
                 END IF;
             END$$;
-            """)
+            """
+            )
 
 
 # ================================

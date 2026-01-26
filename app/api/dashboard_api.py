@@ -1,5 +1,7 @@
-from fastapi import APIRouter
 from datetime import date
+
+from fastapi import APIRouter
+
 from app.database.connection import get_connection
 
 router = APIRouter(prefix="/hrms/admin/dashboard", tags=["Admin Dashboard"])
@@ -103,34 +105,20 @@ def dashboard_overview():
 
     return {
         "date": today,
-
-        "employees": {
-            "total": emp[0],
-            "active": emp[1]
-        },
-
-        "attendance_today": {
-            "present": att[0] or 0,
-            "absent": att[1] or 0,
-            "late": att[2] or 0
-        },
-
+        "employees": {"total": emp[0], "active": emp[1]},
+        "attendance_today": {"present": att[0] or 0, "absent": att[1] or 0, "late": att[2] or 0},
         "overtime_today_hours": round(overtime[0] or 0, 2),
-
         "shift_distribution": [
-            {
-                "shift_name": row[0],
-                "employees_assigned": row[1]
-            } for row in shifts
+            {"shift_name": row[0], "employees_assigned": row[1]} for row in shifts
         ],
-
         "recent_activity": [
             {
                 "employee_id": row[0],
                 "employee_name": row[1],
                 "event_type": row[2],
                 "event_time": row[3],
-                "source": row[4]
-            } for row in events
-        ]
+                "source": row[4],
+            }
+            for row in events
+        ],
     }

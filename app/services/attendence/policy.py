@@ -1,7 +1,7 @@
 # app/services/attendance/policy.py
 
 from dataclasses import dataclass
-from datetime import datetime, date, time
+from datetime import date, datetime, time
 
 from app.database.connection import get_connection
 
@@ -17,7 +17,7 @@ class AttendancePolicy:
     full_day_fraction: float
     half_day_fraction: float
     overtime_enabled: bool
-    late_checkin_cutoff_minutes: int   # ⬅️ NEW (IMPORTANT)
+    late_checkin_cutoff_minutes: int  # ⬅️ NEW (IMPORTANT)
 
 
 # =========================================================
@@ -33,7 +33,7 @@ class AttendancePolicyDB:
         full_day_fraction=0.75,
         half_day_fraction=0.5,
         overtime_enabled=True,
-        late_checkin_cutoff_minutes=0,   # ⬅️ BLOCK check-in after shift
+        late_checkin_cutoff_minutes=0,  # ⬅️ BLOCK check-in after shift
     )
 
     @staticmethod

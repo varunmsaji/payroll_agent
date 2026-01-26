@@ -1,7 +1,8 @@
 # app/database/employee_shift_db.py
 
-from psycopg2.extras import RealDictCursor
 from datetime import date
+
+from psycopg2.extras import RealDictCursor
 
 from app.database.connection import get_connection
 

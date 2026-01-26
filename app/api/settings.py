@@ -1,13 +1,13 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import Dict, Any, List
-from psycopg2.extras import RealDictCursor
+from typing import Any, Dict, List
 
-from app.database.connection import get_connection
-from app.database.payroll import PayrollPolicyDB
+from fastapi import APIRouter, HTTPException
+from psycopg2.extras import RealDictCursor
+from pydantic import BaseModel
 
 # ✅ IMPORT YOUR REAL WORKFLOW DATABASE
 from app.database import workflow_database as workflow_db
+from app.database.connection import get_connection
+from app.database.payroll import PayrollPolicyDB
 
 router = APIRouter(prefix="/hrms/settings", tags=["Settings"])
 
@@ -15,6 +15,7 @@ router = APIRouter(prefix="/hrms/settings", tags=["Settings"])
 # ============================================================
 # ✅ PAYROLL POLICY MODELS
 # ============================================================
+
 
 class PayrollPolicyUpdate(BaseModel):
     late_grace_minutes: int
@@ -32,6 +33,7 @@ class PayrollPolicyUpdate(BaseModel):
 # ✅ ATTENDANCE POLICY MODELS
 # ============================================================
 
+
 class AttendancePolicyUpdate(BaseModel):
     late_grace_minutes: int
     early_exit_grace_minutes: int
@@ -45,6 +47,7 @@ class AttendancePolicyUpdate(BaseModel):
 # ✅ PAYROLL POLICY SETTINGS
 # ============================================================
 
+
 @router.get("/payroll-policy")
 def get_payroll_policy():
     policy = PayrollPolicyDB.get_active_policy()
@@ -56,28 +59,28 @@ def get_payroll_policy():
 @router.put("/payroll-policy")
 def update_payroll_policy(payload: PayrollPolicyUpdate):
     policy = PayrollPolicyDB.update_policy(payload.dict())
-    return {
-        "message": "Payroll policy updated successfully",
-        "policy": policy
-    }
+    return {"message": "Payroll policy updated successfully", "policy": policy}
 
 
 # ============================================================
 # ✅ ATTENDANCE POLICY SETTINGS (DYNAMIC)
 # ============================================================
 
+
 @router.get("/attendance-policy")
 def get_attendance_policy():
     conn = get_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    cur.execute("""
+    cur.execute(
+        """
         SELECT *
         FROM attendance_policies
         WHERE active = TRUE
         ORDER BY created_at DESC
         LIMIT 1;
-    """)
+    """
+    )
 
     row = cur.fetchone()
     cur.close()
@@ -96,7 +99,8 @@ def update_attendance_policy(payload: AttendancePolicyUpdate):
 
     cur.execute("UPDATE attendance_policies SET active = FALSE;")
 
-    cur.execute("""
+    cur.execute(
+        """
         INSERT INTO attendance_policies (
             late_grace_minutes,
             early_exit_grace_minutes,
@@ -108,29 +112,29 @@ def update_attendance_policy(payload: AttendancePolicyUpdate):
         )
         VALUES (%s,%s,%s,%s,%s,%s,TRUE)
         RETURNING *;
-    """, (
-        payload.late_grace_minutes,
-        payload.early_exit_grace_minutes,
-        payload.full_day_fraction,
-        payload.half_day_fraction,
-        payload.night_shift_enabled,
-        payload.overtime_enabled
-    ))
+    """,
+        (
+            payload.late_grace_minutes,
+            payload.early_exit_grace_minutes,
+            payload.full_day_fraction,
+            payload.half_day_fraction,
+            payload.night_shift_enabled,
+            payload.overtime_enabled,
+        ),
+    )
 
     row = cur.fetchone()
     conn.commit()
     cur.close()
     conn.close()
 
-    return {
-        "message": "Attendance policy updated",
-        "policy": row
-    }
+    return {"message": "Attendance policy updated", "policy": row}
 
 
 # ============================================================
 # ✅ WORKFLOW SETTINGS (SAFE VERSION)
 # ============================================================
+
 
 @router.get("/workflows")
 def list_workflows():
@@ -143,11 +147,13 @@ def list_workflows():
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        cur.execute("""
+        cur.execute(
+            """
             SELECT *
             FROM workflows
             ORDER BY created_at DESC;
-        """)
+        """
+        )
 
         rows = cur.fetchall()
         cur.close()
@@ -164,9 +170,7 @@ def activate_workflow(payload: Dict[str, Any]):
 
     workflow_db.activate_workflow(workflow_id)
 
-    return {
-        "message": f"Workflow {workflow_id} activated successfully"
-    }
+    return {"message": f"Workflow {workflow_id} activated successfully"}
 
 
 @router.post("/workflows/deactivate")
@@ -177,6 +181,4 @@ def deactivate_workflow(payload: Dict[str, Any]):
 
     workflow_db.deactivate_workflow(workflow_id)
 
-    return {
-        "message": f"Workflow {workflow_id} deactivated successfully"
-    }
+    return {"message": f"Workflow {workflow_id} deactivated successfully"}

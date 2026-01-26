@@ -1,4 +1,5 @@
 from datetime import date
+
 from psycopg2.extras import RealDictCursor
 
 from app.database.connection import get_connection
@@ -47,9 +48,7 @@ class LeaveTypeDB:
     def get_leave_types():
         with get_connection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(
-                    "SELECT * FROM leave_types ORDER BY leave_type_id;"
-                )
+                cur.execute("SELECT * FROM leave_types ORDER BY leave_type_id;")
                 return cur.fetchall()
 
     @staticmethod

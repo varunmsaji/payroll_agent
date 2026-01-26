@@ -1,29 +1,52 @@
-from fastapi import FastAPI
-from app.api.dashboard_api import router as dashboard_router
+import logging
 
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.shifts import router as shifts_router
-from app.api.leave_api import router as leave_router
-from app.api.workflow_router import router as workflow_router
-from app.api.employee_detail import router as employee_detail_router
+
+from app.api.dashboard_api import router as dashboard_router
+from app.utils.logging_config import get_logger, setup_logging
+
+# Initialize logging system
+setup_logging(log_level=logging.DEBUG)  # Set to DEBUG for detailed logs
+logger = get_logger(__name__)
 from app.api.attendence import router as attendence_router
-from app.api.payroll import router as payroll_router
-from app.api.settings import router as settings_router
 from app.api.attendence_dashboard import router as attendence_dashboard_router
+from app.api.attendence_record import router as attendence_record_router
+from app.api.attendence_test_api import router as attendence_test_router
+from app.api.employee_detail import router as employee_detail_router
+
 # from app.api.attendence_api.attendence_actions_api import router as attendence_actions_router
 # from app.api.attendence_api.attendence_display import router as attendence_display_router
 from app.api.face_recognition import router as face_recognition_router
-from app.api.attendence_test_api import router as attendence_test_router
-from app.api.attendence_record import router as attendence_record_router
+from app.api.leave_api import router as leave_router
+from app.api.payroll import router as payroll_router
+from app.api.settings import router as settings_router
+from app.api.shifts import router as shifts_router
+from app.api.workflow_router import router as workflow_router
+
 # from app.api.face_recognition_insight import router as face_recognition_insight_router
 app = FastAPI()
+
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Application startup initiated")
+    logger.info("Registering API routers...")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Application shutdown initiated")
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # Allow all frontends (React, mobile, etc.)
+    allow_origins=["*"],  # Allow all frontends (React, mobile, etc.)
     allow_credentials=True,
-    allow_methods=["*"],        # GET, POST, PUT, DELETE
-    allow_headers=["*"],        # Authorization, Content-Type, etc.
+    allow_methods=["*"],  # GET, POST, PUT, DELETE
+    allow_headers=["*"],  # Authorization, Content-Type, etc.
 )
+logger.info("CORS middleware configured")
 
 
 app.include_router(dashboard_router)
@@ -41,3 +64,6 @@ app.include_router(face_recognition_router)
 app.include_router(attendence_test_router)
 app.include_router(attendence_record_router)
 # app.include_router(face_recognition_insight_router)
+
+logger.info("All routers registered successfully")
+logger.info("Application ready to handle requests")

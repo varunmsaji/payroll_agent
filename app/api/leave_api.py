@@ -1,20 +1,19 @@
-from fastapi import APIRouter, HTTPException
 from datetime import date
-from typing import Dict, Any
+from typing import Any, Dict
 
+from fastapi import APIRouter, HTTPException
 from psycopg2.extras import RealDictCursor
-from app.database.connection import get_connection   # ✅ ENSURE THIS EXISTS
-
-from app.database.leave_database import (
-    LeaveTypeDB,
-    LeaveBalanceDB,
-    LeaveRequestDB,
-    LeaveHistoryDB,
-    EmployeeSalaryDB,
-)
 
 # ✅ IMPORT WORKFLOW ENGINE
 from app.database import workflow_database as workflow_db
+from app.database.connection import get_connection  # ✅ ENSURE THIS EXISTS
+from app.database.leave_database import (
+    EmployeeSalaryDB,
+    LeaveBalanceDB,
+    LeaveHistoryDB,
+    LeaveRequestDB,
+    LeaveTypeDB,
+)
 
 router = APIRouter(prefix="/hrms/leaves", tags=["Leaves"])
 
@@ -23,6 +22,7 @@ router = APIRouter(prefix="/hrms/leaves", tags=["Leaves"])
 # 1️⃣ LEAVE TYPES CRUD
 # ============================================================
 
+
 @router.post("/types")
 def add_leave_type(req: Dict[str, Any]):
     return LeaveTypeDB.add_leave_type(
@@ -30,7 +30,7 @@ def add_leave_type(req: Dict[str, Any]):
         req["code"],
         req.get("yearly_quota", 0),
         req.get("is_paid", True),
-        req.get("carry_forward", True)
+        req.get("carry_forward", True),
     )
 
 
@@ -43,6 +43,7 @@ def get_leave_types():
 # 2️⃣ LEAVE BALANCE
 # ============================================================
 
+
 @router.post("/balance/init")
 def initialize_balance(req: Dict[str, Any]):
     if not all(k in req for k in ("employee_id", "leave_type_id", "year", "quota")):
@@ -53,7 +54,7 @@ def initialize_balance(req: Dict[str, Any]):
         req["leave_type_id"],
         req["year"],
         req["quota"],
-        req.get("carry_forwarded", 0)
+        req.get("carry_forwarded", 0),
     )
 
     if res is None:
@@ -70,6 +71,7 @@ def get_balance(employee_id: int, year: int):
 # ============================================================
 # 3️⃣ ✅ LEAVE APPLY (NOW WITH BALANCE CHECK)
 # ============================================================
+
 
 @router.post("/apply")
 def apply_leave(req: Dict[str, Any]):
@@ -102,8 +104,7 @@ def apply_leave(req: Dict[str, Any]):
 
     if total_days > remaining:
         raise HTTPException(
-            400,
-            f"Insufficient leave balance. Available: {remaining}, Requested: {total_days}"
+            400, f"Insufficient leave balance. Available: {remaining}, Requested: {total_days}"
         )
 
     # ✅ 3. OVERLAP CHECK
@@ -112,12 +113,7 @@ def apply_leave(req: Dict[str, Any]):
 
     # ✅ 4. CREATE LEAVE REQUEST
     res = LeaveRequestDB.apply_leave(
-        employee_id,
-        leave_type_id,
-        start_date,
-        end_date,
-        total_days,
-        reason
+        employee_id, leave_type_id, start_date, end_date, total_days, reason
     )
 
     # ✅ 5. AUTO START WORKFLOW
@@ -127,7 +123,7 @@ def apply_leave(req: Dict[str, Any]):
             module="leave",
             request_id=res["leave_id"],
             workflow_id=wf["id"],
-            employee_id=employee_id
+            employee_id=employee_id,
         )
 
     return {"message": "Leave applied successfully", "data": res}
@@ -136,6 +132,7 @@ def apply_leave(req: Dict[str, Any]):
 # ============================================================
 # 4️⃣ REQUEST LISTING
 # ============================================================
+
 
 @router.get("/requests")
 def get_all_requests():
@@ -156,6 +153,7 @@ def get_employee_requests(employee_id: int):
 # 5️⃣ LEAVE HISTORY
 # ============================================================
 
+
 @router.get("/history/{employee_id}")
 def get_leave_history(employee_id: int):
     return LeaveHistoryDB.get_history(employee_id)
@@ -164,6 +162,7 @@ def get_leave_history(employee_id: int):
 # ============================================================
 # 6️⃣ SALARY BASED ON LEAVES
 # ============================================================
+
 
 @router.get("/salary/{employee_id}/{year}/{month}")
 def calculate_salary_after_leaves(employee_id: int, year: int, month: int):
@@ -189,7 +188,7 @@ def calculate_salary_after_leaves(employee_id: int, year: int, month: int):
         "unpaid_leave_days": unpaid_days,
         "daily_salary": daily_salary,
         "deduction": deduction,
-        "final_salary": final_salary
+        "final_salary": final_salary,
     }
 
 
@@ -197,38 +196,45 @@ def calculate_salary_after_leaves(employee_id: int, year: int, month: int):
 # ✅ 7️⃣ ADMIN LEAVE DASHBOARD STATS
 # ============================================================
 
+
 @router.get("/admin/stats")
 def leave_admin_stats():
     conn = get_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     # ✅ Overall Status Counts
-    cur.execute("""
+    cur.execute(
+        """
         SELECT 
             COUNT(*) FILTER (WHERE status = 'pending')  AS pending,
             COUNT(*) FILTER (WHERE status = 'approved') AS approved,
             COUNT(*) FILTER (WHERE status = 'rejected') AS rejected,
             COUNT(*) AS total
         FROM leave_requests;
-    """)
+    """
+    )
     overall = cur.fetchone()
 
     # ✅ This Month Requests
-    cur.execute("""
+    cur.execute(
+        """
         SELECT COUNT(*) AS this_month
         FROM leave_requests
         WHERE DATE_TRUNC('month', applied_on) = DATE_TRUNC('month', CURRENT_DATE);
-    """)
+    """
+    )
     monthly = cur.fetchone()
 
     # ✅ Paid vs Unpaid (From Leave History)
-    cur.execute("""
+    cur.execute(
+        """
         SELECT 
             COUNT(*) FILTER (WHERE t.is_paid = TRUE)  AS paid_leaves,
             COUNT(*) FILTER (WHERE t.is_paid = FALSE) AS unpaid_leaves
         FROM leave_history h
         JOIN leave_types t ON h.leave_type_id = t.leave_type_id;
-    """)
+    """
+    )
     paid_stats = cur.fetchone()
 
     cur.close()
@@ -241,7 +247,7 @@ def leave_admin_stats():
         "rejected_requests": overall["rejected"],
         "this_month_requests": monthly["this_month"],
         "paid_leaves": paid_stats["paid_leaves"],
-        "unpaid_leaves": paid_stats["unpaid_leaves"]
+        "unpaid_leaves": paid_stats["unpaid_leaves"],
     }
 
 
@@ -249,11 +255,12 @@ def leave_admin_stats():
 # ✅ 8️⃣ ADMIN LEAVE APPROVAL
 # ============================================================
 
+
 @router.post("/admin/approve/{leave_id}")
 def admin_approve_leave(leave_id: int):
     updated = LeaveRequestDB.update_leave_status_only(leave_id, "approved")
     return {"message": "Leave approved", "data": updated}
-    
+
 
 @router.post("/admin/reject/{leave_id}")
 def admin_reject_leave(leave_id: int):
