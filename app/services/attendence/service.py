@@ -242,10 +242,20 @@ class AttendanceService:
         ws = ws_local.replace(tzinfo=IST).astimezone(UTC)
         we = we_local.replace(tzinfo=IST).astimezone(UTC)
 
-        early = getattr(policy, "early_checkin_grace_minutes", 0)
-        late = getattr(policy, "early_exit_grace_minutes", 0)
+        early_policy_grace = int(getattr(policy, "early_checkin_grace_minutes", 0))
 
-        return ws - timedelta(minutes=early), we + timedelta(minutes=late)
+        early_ot_grace = int(shift.get("early_overtime_grace_minutes", 0)) if shift else 0
+        early_ot_max = int(shift.get("early_overtime_max_minutes", 0)) if shift else 0
+
+        total_early_window = early_policy_grace + early_ot_grace + early_ot_max
+
+        late_exit_grace = int(getattr(policy, "early_exit_grace_minutes", 0))
+
+        return (
+            ws - timedelta(minutes=total_early_window),
+            we + timedelta(minutes=late_exit_grace),
+        )
+
 
     @staticmethod
     def _derive_state(events):

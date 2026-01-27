@@ -2266,3 +2266,64 @@ NameError: name 'time' is not defined
 2026-01-27 21:47:08 - app.api.face_recognition - INFO - [face_recognition.py:281] - test_punch() - [TEST_PUNCH] Parsed event_time accepted | event_time=2026-01-27T02:00:00+00:00 | tzinfo=UTC
 2026-01-27 21:47:08 - app.api.face_recognition - INFO - [face_recognition.py:290] - test_punch() - [TEST_PUNCH] Calling AttendanceService.process_punch | employee_id=36 | event_time=2026-01-27T02:00:00+00:00
 2026-01-27 21:47:14 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Early check-in too early (max 75 minutes allowed)
+2026-01-27 21:52:57 - app.api.face_recognition - WARNING - [face_recognition.py:254] - test_punch() - [TEST_PUNCH] Request received | employee_id=36 | raw_event_time=2026-01-27 05:30:00+00:00 | server_received_at=2026-01-27T16:22:57.192537+00:00
+2026-01-27 21:52:57 - app.api.face_recognition - INFO - [face_recognition.py:281] - test_punch() - [TEST_PUNCH] Parsed event_time accepted | event_time=2026-01-27T05:30:00+00:00 | tzinfo=UTC
+2026-01-27 21:52:57 - app.api.face_recognition - INFO - [face_recognition.py:290] - test_punch() - [TEST_PUNCH] Calling AttendanceService.process_punch | employee_id=36 | event_time=2026-01-27T05:30:00+00:00
+2026-01-27 21:53:03 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-27 21:53:31 - app.api.face_recognition - WARNING - [face_recognition.py:254] - test_punch() - [TEST_PUNCH] Request received | employee_id=36 | raw_event_time=2026-01-27 02:16:00+00:00 | server_received_at=2026-01-27T16:23:31.524747+00:00
+2026-01-27 21:53:31 - app.api.face_recognition - INFO - [face_recognition.py:281] - test_punch() - [TEST_PUNCH] Parsed event_time accepted | event_time=2026-01-27T02:16:00+00:00 | tzinfo=UTC
+2026-01-27 21:53:31 - app.api.face_recognition - INFO - [face_recognition.py:290] - test_punch() - [TEST_PUNCH] Calling AttendanceService.process_punch | employee_id=36 | event_time=2026-01-27T02:16:00+00:00
+2026-01-27 21:53:45 - app.api.face_recognition - INFO - [face_recognition.py:309] - test_punch() - [TEST_PUNCH] process_punch completed | duration=13.77s | result={'action': 'check_in'}
+2026-01-27 21:53:45 - app.api.face_recognition - INFO - [face_recognition.py:329] - test_punch() - [TEST_PUNCH] Punch successful | employee_id=36 | action=check_in
+2026-01-27 21:55:15 - app.api.face_recognition - WARNING - [face_recognition.py:254] - test_punch() - [TEST_PUNCH] Request received | employee_id=36 | raw_event_time=2026-01-27 05:30:00+00:00 | server_received_at=2026-01-27T16:25:15.321097+00:00
+2026-01-27 21:55:15 - app.api.face_recognition - INFO - [face_recognition.py:281] - test_punch() - [TEST_PUNCH] Parsed event_time accepted | event_time=2026-01-27T05:30:00+00:00 | tzinfo=UTC
+2026-01-27 21:55:15 - app.api.face_recognition - INFO - [face_recognition.py:290] - test_punch() - [TEST_PUNCH] Calling AttendanceService.process_punch | employee_id=36 | event_time=2026-01-27T05:30:00+00:00
+2026-01-27 21:55:21 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-27 21:56:35 - app.api.face_recognition - WARNING - [face_recognition.py:254] - test_punch() - [TEST_PUNCH] Request received | employee_id=36 | raw_event_time=2026-01-27 02:16:00+00:00 | server_received_at=2026-01-27T16:26:35.427421+00:00
+2026-01-27 21:56:35 - app.api.face_recognition - INFO - [face_recognition.py:281] - test_punch() - [TEST_PUNCH] Parsed event_time accepted | event_time=2026-01-27T02:16:00+00:00 | tzinfo=UTC
+2026-01-27 21:56:35 - app.api.face_recognition - INFO - [face_recognition.py:290] - test_punch() - [TEST_PUNCH] Calling AttendanceService.process_punch | employee_id=36 | event_time=2026-01-27T02:16:00+00:00
+2026-01-27 21:56:50 - app.api.face_recognition - INFO - [face_recognition.py:309] - test_punch() - [TEST_PUNCH] process_punch completed | duration=15.25s | result={'action': 'check_in'}
+2026-01-27 21:56:50 - app.api.face_recognition - INFO - [face_recognition.py:329] - test_punch() - [TEST_PUNCH] Punch successful | employee_id=36 | action=check_in
+2026-01-27 21:56:54 - app.api.face_recognition - WARNING - [face_recognition.py:254] - test_punch() - [TEST_PUNCH] Request received | employee_id=36 | raw_event_time=2026-01-27 12:30:00+00:00 | server_received_at=2026-01-27T16:26:54.919632+00:00
+2026-01-27 21:56:54 - app.api.face_recognition - INFO - [face_recognition.py:281] - test_punch() - [TEST_PUNCH] Parsed event_time accepted | event_time=2026-01-27T12:30:00+00:00 | tzinfo=UTC
+2026-01-27 21:56:54 - app.api.face_recognition - INFO - [face_recognition.py:290] - test_punch() - [TEST_PUNCH] Calling AttendanceService.process_punch | employee_id=36 | event_time=2026-01-27T12:30:00+00:00
+2026-01-27 21:57:00 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-27 21:59:19 - app.api.main - INFO - [main.py:39] - shutdown_event() - Application shutdown initiated
+2026-01-27 21:59:19 - root - INFO - [logging_config.py:71] - setup_logging() - ================================================================================
+2026-01-27 21:59:19 - root - INFO - [logging_config.py:72] - setup_logging() - Logging system initialized at 2026-01-27 21:59:19.357254
+2026-01-27 21:59:19 - root - INFO - [logging_config.py:73] - setup_logging() - Log directory: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs
+2026-01-27 21:59:19 - root - INFO - [logging_config.py:74] - setup_logging() - Main log file: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs/app.log
+2026-01-27 21:59:19 - root - INFO - [logging_config.py:75] - setup_logging() - Error log file: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs/error.log
+2026-01-27 21:59:19 - root - INFO - [logging_config.py:76] - setup_logging() - Max log size: 10.0 MB
+2026-01-27 21:59:19 - root - INFO - [logging_config.py:77] - setup_logging() - Backup count: 5
+2026-01-27 21:59:19 - root - INFO - [logging_config.py:78] - setup_logging() - ================================================================================
+2026-01-27 21:59:20 - matplotlib - DEBUG - [__init__.py:337] - wrapper() - matplotlib data path: /home/varun/miniconda3/envs/image_gen/lib/python3.9/site-packages/matplotlib/mpl-data
+2026-01-27 21:59:20 - matplotlib - DEBUG - [__init__.py:337] - wrapper() - CONFIGDIR=/home/varun/.config/matplotlib
+2026-01-27 21:59:20 - matplotlib - DEBUG - [__init__.py:1498] - <module>() - interactive is False
+2026-01-27 21:59:20 - matplotlib - DEBUG - [__init__.py:1499] - <module>() - platform is linux
+2026-01-27 21:59:20 - matplotlib - DEBUG - [__init__.py:337] - wrapper() - CACHEDIR=/home/varun/.cache/matplotlib
+2026-01-27 21:59:20 - matplotlib.font_manager - DEBUG - [font_manager.py:1574] - _load_fontmanager() - Using fontManager instance from /home/varun/.cache/matplotlib/fontlist-v330.json
+2026-01-27 21:59:21 - app.api.main - INFO - [main.py:49] - <module>() - CORS middleware configured
+2026-01-27 21:59:21 - app.api.main - INFO - [main.py:68] - <module>() - All routers registered successfully
+2026-01-27 21:59:21 - app.api.main - INFO - [main.py:69] - <module>() - Application ready to handle requests
+2026-01-27 21:59:21 - app.api.main - INFO - [main.py:33] - startup_event() - Application startup initiated
+2026-01-27 21:59:21 - app.api.main - INFO - [main.py:34] - startup_event() - Registering API routers...
+2026-01-27 21:59:53 - app.api.face_recognition - WARNING - [face_recognition.py:254] - test_punch() - [TEST_PUNCH] Request received | employee_id=36 | raw_event_time=2026-01-27 03:20:00+00:00 | server_received_at=2026-01-27T16:29:53.060991+00:00
+2026-01-27 21:59:53 - app.api.face_recognition - INFO - [face_recognition.py:281] - test_punch() - [TEST_PUNCH] Parsed event_time accepted | event_time=2026-01-27T03:20:00+00:00 | tzinfo=UTC
+2026-01-27 21:59:53 - app.api.face_recognition - INFO - [face_recognition.py:290] - test_punch() - [TEST_PUNCH] Calling AttendanceService.process_punch | employee_id=36 | event_time=2026-01-27T03:20:00+00:00
+2026-01-27 22:00:23 - app.api.face_recognition - INFO - [face_recognition.py:309] - test_punch() - [TEST_PUNCH] process_punch completed | duration=30.70s | result={'action': 'check_in'}
+2026-01-27 22:00:23 - app.api.face_recognition - INFO - [face_recognition.py:329] - test_punch() - [TEST_PUNCH] Punch successful | employee_id=36 | action=check_in
+2026-01-27 22:01:53 - app.api.face_recognition - WARNING - [face_recognition.py:254] - test_punch() - [TEST_PUNCH] Request received | employee_id=36 | raw_event_time=2026-01-27 02:16:00+00:00 | server_received_at=2026-01-27T16:31:53.375328+00:00
+2026-01-27 22:01:53 - app.api.face_recognition - INFO - [face_recognition.py:281] - test_punch() - [TEST_PUNCH] Parsed event_time accepted | event_time=2026-01-27T02:16:00+00:00 | tzinfo=UTC
+2026-01-27 22:01:53 - app.api.face_recognition - INFO - [face_recognition.py:290] - test_punch() - [TEST_PUNCH] Calling AttendanceService.process_punch | employee_id=36 | event_time=2026-01-27T02:16:00+00:00
+2026-01-27 22:02:30 - app.api.face_recognition - INFO - [face_recognition.py:309] - test_punch() - [TEST_PUNCH] process_punch completed | duration=37.32s | result={'action': 'check_in'}
+2026-01-27 22:02:30 - app.api.face_recognition - INFO - [face_recognition.py:329] - test_punch() - [TEST_PUNCH] Punch successful | employee_id=36 | action=check_in
+2026-01-27 22:02:33 - app.api.face_recognition - WARNING - [face_recognition.py:254] - test_punch() - [TEST_PUNCH] Request received | employee_id=36 | raw_event_time=2026-01-27 05:30:00+00:00 | server_received_at=2026-01-27T16:32:33.730590+00:00
+2026-01-27 22:02:33 - app.api.face_recognition - INFO - [face_recognition.py:281] - test_punch() - [TEST_PUNCH] Parsed event_time accepted | event_time=2026-01-27T05:30:00+00:00 | tzinfo=UTC
+2026-01-27 22:02:33 - app.api.face_recognition - INFO - [face_recognition.py:290] - test_punch() - [TEST_PUNCH] Calling AttendanceService.process_punch | employee_id=36 | event_time=2026-01-27T05:30:00+00:00
+2026-01-27 22:03:09 - app.api.face_recognition - INFO - [face_recognition.py:309] - test_punch() - [TEST_PUNCH] process_punch completed | duration=35.37s | result={'action': 'check_out'}
+2026-01-27 22:03:09 - app.api.face_recognition - INFO - [face_recognition.py:329] - test_punch() - [TEST_PUNCH] Punch successful | employee_id=36 | action=check_out
+2026-01-27 22:06:20 - app.api.face_recognition - WARNING - [face_recognition.py:254] - test_punch() - [TEST_PUNCH] Request received | employee_id=36 | raw_event_time=2026-01-27 02:14:00+00:00 | server_received_at=2026-01-27T16:36:20.170398+00:00
+2026-01-27 22:06:20 - app.api.face_recognition - INFO - [face_recognition.py:281] - test_punch() - [TEST_PUNCH] Parsed event_time accepted | event_time=2026-01-27T02:14:00+00:00 | tzinfo=UTC
+2026-01-27 22:06:20 - app.api.face_recognition - INFO - [face_recognition.py:290] - test_punch() - [TEST_PUNCH] Calling AttendanceService.process_punch | employee_id=36 | event_time=2026-01-27T02:14:00+00:00
+2026-01-27 22:06:35 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Early check-in too early (max 75 minutes allowed)
