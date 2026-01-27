@@ -7,6 +7,12 @@ import numpy as np
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
 from app.utils.logging_config import get_logger, log_exception
+from datetime import datetime, timezone
+from typing import Optional
+import time   # ✅ ADD THIS
+
+import numpy as np
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
 logger = get_logger(__name__)
 
@@ -234,4 +240,121 @@ async def face_punch(
         raise
     except Exception as e:
         log_exception(logger, "Unexpected error in face_punch endpoint", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/punch/test")
+def test_punch(
+    employee_id: int = Query(..., description="Employee ID (test mode)"),
+    event_time: Optional[datetime] = Query(
+        None, description="ISO 8601 datetime with timezone"
+    ),
+):
+    request_received_at = datetime.now(timezone.utc)
+
+    logger.warning(
+        f"[TEST_PUNCH] Request received | "
+        f"employee_id={employee_id} | "
+        f"raw_event_time={event_time} | "
+        f"server_received_at={request_received_at.isoformat()}"
+    )
+
+    # ✅ Always timezone-aware
+    if event_time is None:
+        event_time = datetime.now(timezone.utc)
+        logger.debug(
+            f"[TEST_PUNCH] No event_time provided, using server time | "
+            f"event_time={event_time.isoformat()}"
+        )
+
+    # 🚨 Hard validation
+    if event_time.tzinfo is None:
+        logger.error(
+            f"[TEST_PUNCH] event_time WITHOUT timezone | "
+            f"value={event_time}"
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="event_time must include timezone (ISO 8601)",
+        )
+
+    # 🔍 Log parsed & trusted time
+    logger.info(
+        f"[TEST_PUNCH] Parsed event_time accepted | "
+        f"event_time={event_time.isoformat()} | "
+        f"tzinfo={event_time.tzinfo}"
+    )
+
+    try:
+        start = time.time()
+
+        logger.info(
+            f"[TEST_PUNCH] Calling AttendanceService.process_punch | "
+            f"employee_id={employee_id} | "
+            f"event_time={event_time.isoformat()}"
+        )
+
+        punch_result = AttendanceService.process_punch(
+            employee_id=employee_id,
+            event_time=event_time,
+            source="test",
+            meta={
+                "mode": "manual_test",
+                "device": "test_endpoint",
+                "server_received_at": request_received_at.isoformat(),
+            },
+        )
+
+        duration = time.time() - start
+
+        logger.info(
+            f"[TEST_PUNCH] process_punch completed | "
+            f"duration={duration:.2f}s | "
+            f"result={punch_result}"
+        )
+
+        if punch_result.get("ignored"):
+            logger.warning(
+                f"[TEST_PUNCH] Punch ignored | "
+                f"employee_id={employee_id} | "
+                f"reason={punch_result['reason']}"
+            )
+            return {
+                "success": False,
+                "ignored": True,
+                "employee_id": employee_id,
+                "reason": punch_result["reason"],
+                "event_time": event_time.isoformat(),
+            }
+
+        logger.info(
+            f"[TEST_PUNCH] Punch successful | "
+            f"employee_id={employee_id} | "
+            f"action={punch_result['action']}"
+        )
+
+        return {
+            "success": True,
+            "employee_id": employee_id,
+            "action": punch_result["action"],
+            "event_time": event_time.isoformat(),
+            "mode": "test",
+        }
+
+    except AttendanceException as e:
+        logger.error(
+            f"[TEST_PUNCH] AttendanceException | "
+            f"employee_id={employee_id} | "
+            f"error={str(e)}"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={"employee_id": employee_id, "message": str(e)},
+        )
+
+    except Exception as e:
+        log_exception(
+            logger,
+            f"[TEST_PUNCH] Unexpected error | employee_id={employee_id}",
+            e,
+        )
         raise HTTPException(status_code=500, detail="Internal server error")
