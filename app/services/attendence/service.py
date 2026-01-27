@@ -14,7 +14,23 @@ UTC = ZoneInfo("UTC")
 
 
 class AttendanceService:
+    @classmethod
+    def _get_attendance_window(cls, employee_id: int, dt: date):
+        policy = AttendancePolicyDB.get_policy_for_date(dt)
+        shift = ShiftDB.get_employee_shift(employee_id, dt)
 
+        ws_local, we_local, *_ = cls._get_shift_window(shift, dt)
+
+        ws = ws_local.replace(tzinfo=IST).astimezone(UTC)
+        we = we_local.replace(tzinfo=IST).astimezone(UTC)
+
+        early_grace = getattr(policy, "early_checkin_grace_minutes", 0)
+        late_grace = getattr(policy, "late_checkout_grace_minutes", 0)
+
+        start = ws - timedelta(minutes=early_grace)
+        end = we + timedelta(minutes=late_grace)
+
+        return start, end
     @classmethod
     def process_punch(
         cls,
@@ -96,13 +112,9 @@ class AttendanceService:
 
     @classmethod
     def _get_session_events(cls, employee_id: int, dt: date):
-        shift = ShiftDB.get_employee_shift(employee_id, dt)
-        start_local, end_local, *_ = cls._get_shift_window(shift, dt)
-
-        start = start_local.replace(tzinfo=IST).astimezone(UTC) - timedelta(hours=12)
-        end = end_local.replace(tzinfo=IST).astimezone(UTC) + timedelta(hours=12)
-
+        start, end = cls._get_attendance_window(employee_id, dt)
         return AttendanceEventDB.get_events_for_window(employee_id, start, end)
+
 
     @staticmethod
     def _derive_state(events):
@@ -142,10 +154,12 @@ class AttendanceService:
         # -------------------------------------------------
         # FETCH EVENTS (SAFE WINDOW)
         # -------------------------------------------------
+        start, end = cls._get_attendance_window(employee_id, dt)
+
         events = AttendanceEventDB.get_events_for_window(
             employee_id,
-            ws,
-            we + timedelta(hours=12),
+            start,
+            end,
         )
 
         # -------------------------------------------------

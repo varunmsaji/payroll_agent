@@ -16,6 +16,9 @@ class AttendanceEngine:
     # WORK + BREAK
     # -------------------------------------------------
     def compute_work_and_breaks(self, events):
+    # ✅ DEFENSIVE: ensure chronological order
+        events = sorted(events, key=lambda e: e["event_time"])
+
         work_sec = 0
         break_sec = 0
         last_work_start = None
@@ -24,7 +27,7 @@ class AttendanceEngine:
         check_out = None
 
         for ev in events:
-            t = ev["event_time"]  # UTC aware
+            t = ev["event_time"]
             et = ev["event_type"]
 
             if et == "check_in":
@@ -47,6 +50,7 @@ class AttendanceEngine:
                     work_sec += (t - last_work_start).total_seconds()
 
         return work_sec, break_sec, check_in, check_out
+
 
     # -------------------------------------------------
     # LATE

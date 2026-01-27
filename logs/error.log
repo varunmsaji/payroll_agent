@@ -1,0 +1,2 @@
+2026-01-27 14:40:28 - app.api.face_recognition - ERROR - [face_recognition.py:166] - face_punch() - No employees enrolled in the system
+2026-01-27 14:51:49 - app.api.face_recognition - ERROR - [face_recognition.py:218] - face_punch() - Attendance exception for employee_id 36: Late check-in not allowed after 09:15

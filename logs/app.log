@@ -1,222 +1,64 @@
-2026-01-26 19:05:23 - root - INFO - [logging_config.py:78] - setup_logging() - ================================================================================
-2026-01-26 19:05:23 - root - INFO - [logging_config.py:79] - setup_logging() - Logging system initialized at 2026-01-26 19:05:23.221002
-2026-01-26 19:05:23 - root - INFO - [logging_config.py:80] - setup_logging() - Log directory: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs
-2026-01-26 19:05:23 - root - INFO - [logging_config.py:81] - setup_logging() - Main log file: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs/app.log
-2026-01-26 19:05:23 - root - INFO - [logging_config.py:82] - setup_logging() - Error log file: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs/error.log
-2026-01-26 19:05:23 - root - INFO - [logging_config.py:83] - setup_logging() - Max log size: 10.0 MB
-2026-01-26 19:05:23 - root - INFO - [logging_config.py:84] - setup_logging() - Backup count: 5
-2026-01-26 19:05:23 - root - INFO - [logging_config.py:85] - setup_logging() - ================================================================================
-2026-01-26 19:05:27 - matplotlib - DEBUG - [__init__.py:337] - wrapper() - matplotlib data path: /home/varun/miniconda3/envs/image_gen/lib/python3.9/site-packages/matplotlib/mpl-data
-2026-01-26 19:05:27 - matplotlib - DEBUG - [__init__.py:337] - wrapper() - CONFIGDIR=/home/varun/.config/matplotlib
-2026-01-26 19:05:27 - matplotlib - DEBUG - [__init__.py:1498] - <module>() - interactive is False
-2026-01-26 19:05:27 - matplotlib - DEBUG - [__init__.py:1499] - <module>() - platform is linux
-2026-01-26 19:05:27 - matplotlib - DEBUG - [__init__.py:337] - wrapper() - CACHEDIR=/home/varun/.cache/matplotlib
-2026-01-26 19:05:27 - matplotlib.font_manager - DEBUG - [font_manager.py:1574] - _load_fontmanager() - Using fontManager instance from /home/varun/.cache/matplotlib/fontlist-v330.json
-2026-01-26 19:05:33 - app.api.main - INFO - [main.py:43] - <module>() - CORS middleware configured
-2026-01-26 19:05:33 - app.api.main - INFO - [main.py:62] - <module>() - All routers registered successfully
-2026-01-26 19:05:33 - app.api.main - INFO - [main.py:63] - <module>() - Application ready to handle requests
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.address`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.address` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.automotive`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.automotive` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.bank`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:88] - _find_provider_class() - Specified locale `en_US` is not available for provider `faker.providers.bank`. Locale reset to `en_GB` for this provider.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.barcode`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.barcode` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.color`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.color` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.company`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.company` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.credit_card`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.credit_card` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.currency`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.currency` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.date_time`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.date_time` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:108] - _find_provider_class() - Provider `faker.providers.doi` does not feature localization. Specified locale `en_US` is not used for this provider.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:108] - _find_provider_class() - Provider `faker.providers.emoji` does not feature localization. Specified locale `en_US` is not used for this provider.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:108] - _find_provider_class() - Provider `faker.providers.file` does not feature localization. Specified locale `en_US` is not used for this provider.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.geo`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.geo` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.internet`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.internet` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.isbn`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.isbn` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.job`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.job` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.lorem`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.lorem` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.misc`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.misc` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.passport`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.passport` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.person`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.person` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.phone_number`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.phone_number` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:108] - _find_provider_class() - Provider `faker.providers.profile` does not feature localization. Specified locale `en_US` is not used for this provider.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:108] - _find_provider_class() - Provider `faker.providers.python` does not feature localization. Specified locale `en_US` is not used for this provider.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:108] - _find_provider_class() - Provider `faker.providers.sbn` does not feature localization. Specified locale `en_US` is not used for this provider.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:78] - _find_provider_class() - Looking for locale `en_US` in provider `faker.providers.ssn`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:97] - _find_provider_class() - Provider `faker.providers.ssn` has been localized to `en_US`.
-2026-01-26 19:05:34 - faker.factory - DEBUG - [factory.py:108] - _find_provider_class() - Provider `faker.providers.user_agent` does not feature localization. Specified locale `en_US` is not used for this provider.
-2026-01-26 19:05:34 - asyncio - DEBUG - [selector_events.py:54] - __init__() - Using selector: EpollSelector
-2026-01-26 19:05:34 - app.api.main - INFO - [main.py:29] - startup_event() - Application startup initiated
-2026-01-26 19:05:34 - app.api.main - INFO - [main.py:30] - startup_event() - Registering API routers...
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: GET http://testserver/ "HTTP/1.1 404 Not Found"
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: GET http://testserver/docs "HTTP/1.1 200 OK"
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: GET http://testserver/openapi.json "HTTP/1.1 200 OK"
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: GET http://testserver/openapi.json "HTTP/1.1 200 OK"
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: POST http://testserver/faces/register "HTTP/1.1 422 Unprocessable Entity"
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_begin with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[36:55]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[57:100]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[102:114]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[116:126]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_headers_finished with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_part_data with data[130:463]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_end with no data
-2026-01-26 19:05:34 - app.api.face_recognition - INFO - [face_recognition.py:63] - register_face() - Face registration request for employee_id: 123
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:38] - validate_image() - Validating image: test.jpg, type: image/jpeg
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:45] - validate_image() - Image size: 333 bytes
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:52] - validate_image() - Image validation successful
-2026-01-26 19:05:34 - app.api.face_recognition - INFO - [face_recognition.py:74] - register_face() - Face registered successfully for employee_id: 123
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: POST http://testserver/faces/register?employee_id=123 "HTTP/1.1 200 OK"
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_begin with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[36:55]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[57:100]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[102:114]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[116:126]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_headers_finished with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_part_data with data[130:463]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_end with no data
-2026-01-26 19:05:34 - app.api.face_recognition - INFO - [face_recognition.py:63] - register_face() - Face registration request for employee_id: 123
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:38] - validate_image() - Validating image: test.jpg, type: image/jpeg
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:45] - validate_image() - Image size: 333 bytes
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:52] - validate_image() - Image validation successful
-2026-01-26 19:05:34 - app.api.face_recognition - WARNING - [face_recognition.py:70] - register_face() - No face detected in image for employee_id: 123
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: POST http://testserver/faces/register?employee_id=123 "HTTP/1.1 400 Bad Request"
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_begin with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[36:55]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[57:100]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[102:114]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[116:126]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_headers_finished with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_part_data with data[130:142]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_end with no data
-2026-01-26 19:05:34 - app.api.face_recognition - INFO - [face_recognition.py:63] - register_face() - Face registration request for employee_id: 123
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:38] - validate_image() - Validating image: test.txt, type: text/plain
-2026-01-26 19:05:34 - app.api.face_recognition - WARNING - [face_recognition.py:41] - validate_image() - Invalid image type rejected: text/plain
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: POST http://testserver/faces/register?employee_id=123 "HTTP/1.1 400 Bad Request"
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_begin with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[36:55]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[57:100]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[102:114]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[116:126]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_headers_finished with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_part_data with data[130:463]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_end with no data
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: POST http://testserver/faces/register "HTTP/1.1 422 Unprocessable Entity"
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: POST http://testserver/faces/verify "HTTP/1.1 422 Unprocessable Entity"
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_begin with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[36:55]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[57:100]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[102:114]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[116:126]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_headers_finished with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_part_data with data[130:463]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_end with no data
-2026-01-26 19:05:34 - app.api.face_recognition - INFO - [face_recognition.py:95] - verify_face() - Face verification request for employee_id: 123
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:38] - validate_image() - Validating image: test.jpg, type: image/jpeg
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:45] - validate_image() - Image size: 333 bytes
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:52] - validate_image() - Image validation successful
-2026-01-26 19:05:34 - app.api.face_recognition - INFO - [face_recognition.py:114] - verify_face() - Face verification for employee_id 123: match=True, confidence=0.70, distance=0.3000
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: POST http://testserver/faces/verify?employee_id=123 "HTTP/1.1 200 OK"
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: POST http://testserver/faces/punch "HTTP/1.1 422 Unprocessable Entity"
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_begin with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[36:55]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[57:100]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[102:114]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[116:126]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_headers_finished with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_part_data with data[130:463]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_end with no data
-2026-01-26 19:05:34 - app.api.face_recognition - INFO - [face_recognition.py:135] - face_punch() - Face punch request received at 2026-01-26T13:35:34.243221+00:00
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:140] - face_punch() - Using current time for event: 2026-01-26T13:35:34.243295+00:00
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:38] - validate_image() - Validating image: test.jpg, type: image/jpeg
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:45] - validate_image() - Image size: 333 bytes
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:52] - validate_image() - Image validation successful
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:162] - face_punch() - Identifying face among 1 enrolled employees
-2026-01-26 19:05:34 - app.api.face_recognition - INFO - [face_recognition.py:173] - face_punch() - Face recognized: employee_id=123, confidence=0.70, distance=0.3000
-2026-01-26 19:05:34 - app.api.face_recognition - INFO - [face_recognition.py:196] - face_punch() - Punch successful for employee_id 123: action=check_in
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: POST http://testserver/faces/punch "HTTP/1.1 200 OK"
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_begin with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[36:55]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[57:100]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[102:114]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[116:126]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_headers_finished with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_part_data with data[130:463]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_end with no data
-2026-01-26 19:05:34 - app.api.face_recognition - INFO - [face_recognition.py:135] - face_punch() - Face punch request received at 2026-01-26T13:35:34.246837+00:00
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:140] - face_punch() - Using current time for event: 2026-01-26T13:35:34.246906+00:00
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:38] - validate_image() - Validating image: test.jpg, type: image/jpeg
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:45] - validate_image() - Image size: 333 bytes
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:52] - validate_image() - Image validation successful
-2026-01-26 19:05:34 - app.api.face_recognition - WARNING - [face_recognition.py:154] - face_punch() - No face detected in punch image
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: POST http://testserver/faces/punch "HTTP/1.1 400 Bad Request"
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_begin with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[36:55]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[57:100]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[102:114]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[116:126]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_headers_finished with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_part_data with data[130:463]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_end with no data
-2026-01-26 19:05:34 - app.api.face_recognition - INFO - [face_recognition.py:63] - register_face() - Face registration request for employee_id: 123
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:38] - validate_image() - Validating image: test.jpg, type: image/jpeg
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:45] - validate_image() - Image size: 333 bytes
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:52] - validate_image() - Image validation successful
-2026-01-26 19:05:34 - app.api.face_recognition - WARNING - [face_recognition.py:70] - register_face() - No face detected in image for employee_id: 123
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: POST http://testserver/faces/register?employee_id=123 "HTTP/1.1 400 Bad Request"
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_begin with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[36:55]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[57:100]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_field with data[102:114]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_header_value with data[116:126]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_header_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_headers_finished with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:624] - callback() - Calling on_part_data with data[130:6291586]
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_part_end with no data
-2026-01-26 19:05:34 - python_multipart.multipart - DEBUG - [multipart.py:627] - callback() - Calling on_end with no data
-2026-01-26 19:05:34 - app.api.face_recognition - INFO - [face_recognition.py:63] - register_face() - Face registration request for employee_id: 123
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:38] - validate_image() - Validating image: test.jpg, type: image/jpeg
-2026-01-26 19:05:34 - app.api.face_recognition - DEBUG - [face_recognition.py:45] - validate_image() - Image size: 6291456 bytes
-2026-01-26 19:05:34 - app.api.face_recognition - WARNING - [face_recognition.py:48] - validate_image() - Image too large: 6291456 bytes (max: 5242880)
-2026-01-26 19:05:34 - httpx - INFO - [_client.py:1025] - _send_single_request() - HTTP Request: POST http://testserver/faces/register?employee_id=123 "HTTP/1.1 400 Bad Request"
-2026-01-26 19:05:34 - app.api.main - INFO - [main.py:34] - shutdown_event() - Application shutdown initiated
+2026-01-27 17:00:43 - app.api.main - INFO - [main.py:39] - shutdown_event() - Application shutdown initiated
+2026-01-27 17:00:43 - root - INFO - [logging_config.py:71] - setup_logging() - ================================================================================
+2026-01-27 17:00:43 - root - INFO - [logging_config.py:72] - setup_logging() - Logging system initialized at 2026-01-27 17:00:43.867907
+2026-01-27 17:00:43 - root - INFO - [logging_config.py:73] - setup_logging() - Log directory: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs
+2026-01-27 17:00:43 - root - INFO - [logging_config.py:74] - setup_logging() - Main log file: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs/app.log
+2026-01-27 17:00:43 - root - INFO - [logging_config.py:75] - setup_logging() - Error log file: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs/error.log
+2026-01-27 17:00:43 - root - INFO - [logging_config.py:76] - setup_logging() - Max log size: 10.0 MB
+2026-01-27 17:00:43 - root - INFO - [logging_config.py:77] - setup_logging() - Backup count: 5
+2026-01-27 17:00:43 - root - INFO - [logging_config.py:78] - setup_logging() - ================================================================================
+2026-01-27 17:01:24 - root - INFO - [logging_config.py:71] - setup_logging() - ================================================================================
+2026-01-27 17:01:24 - root - INFO - [logging_config.py:72] - setup_logging() - Logging system initialized at 2026-01-27 17:01:24.920206
+2026-01-27 17:01:24 - root - INFO - [logging_config.py:73] - setup_logging() - Log directory: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs
+2026-01-27 17:01:24 - root - INFO - [logging_config.py:74] - setup_logging() - Main log file: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs/app.log
+2026-01-27 17:01:24 - root - INFO - [logging_config.py:75] - setup_logging() - Error log file: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs/error.log
+2026-01-27 17:01:24 - root - INFO - [logging_config.py:76] - setup_logging() - Max log size: 10.0 MB
+2026-01-27 17:01:24 - root - INFO - [logging_config.py:77] - setup_logging() - Backup count: 5
+2026-01-27 17:01:24 - root - INFO - [logging_config.py:78] - setup_logging() - ================================================================================
+2026-01-27 17:02:03 - root - INFO - [logging_config.py:71] - setup_logging() - ================================================================================
+2026-01-27 17:02:03 - root - INFO - [logging_config.py:72] - setup_logging() - Logging system initialized at 2026-01-27 17:02:03.780032
+2026-01-27 17:02:03 - root - INFO - [logging_config.py:73] - setup_logging() - Log directory: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs
+2026-01-27 17:02:03 - root - INFO - [logging_config.py:74] - setup_logging() - Main log file: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs/app.log
+2026-01-27 17:02:03 - root - INFO - [logging_config.py:75] - setup_logging() - Error log file: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs/error.log
+2026-01-27 17:02:03 - root - INFO - [logging_config.py:76] - setup_logging() - Max log size: 10.0 MB
+2026-01-27 17:02:03 - root - INFO - [logging_config.py:77] - setup_logging() - Backup count: 5
+2026-01-27 17:02:03 - root - INFO - [logging_config.py:78] - setup_logging() - ================================================================================
+2026-01-27 17:02:51 - root - INFO - [logging_config.py:71] - setup_logging() - ================================================================================
+2026-01-27 17:02:51 - root - INFO - [logging_config.py:72] - setup_logging() - Logging system initialized at 2026-01-27 17:02:51.071818
+2026-01-27 17:02:51 - root - INFO - [logging_config.py:73] - setup_logging() - Log directory: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs
+2026-01-27 17:02:51 - root - INFO - [logging_config.py:74] - setup_logging() - Main log file: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs/app.log
+2026-01-27 17:02:51 - root - INFO - [logging_config.py:75] - setup_logging() - Error log file: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs/error.log
+2026-01-27 17:02:51 - root - INFO - [logging_config.py:76] - setup_logging() - Max log size: 10.0 MB
+2026-01-27 17:02:51 - root - INFO - [logging_config.py:77] - setup_logging() - Backup count: 5
+2026-01-27 17:02:51 - root - INFO - [logging_config.py:78] - setup_logging() - ================================================================================
+2026-01-27 17:02:52 - matplotlib - DEBUG - [__init__.py:337] - wrapper() - matplotlib data path: /home/varun/miniconda3/envs/image_gen/lib/python3.9/site-packages/matplotlib/mpl-data
+2026-01-27 17:02:52 - matplotlib - DEBUG - [__init__.py:337] - wrapper() - CONFIGDIR=/home/varun/.config/matplotlib
+2026-01-27 17:02:52 - matplotlib - DEBUG - [__init__.py:1498] - <module>() - interactive is False
+2026-01-27 17:02:52 - matplotlib - DEBUG - [__init__.py:1499] - <module>() - platform is linux
+2026-01-27 17:02:52 - matplotlib - DEBUG - [__init__.py:337] - wrapper() - CACHEDIR=/home/varun/.cache/matplotlib
+2026-01-27 17:02:52 - matplotlib.font_manager - DEBUG - [font_manager.py:1574] - _load_fontmanager() - Using fontManager instance from /home/varun/.cache/matplotlib/fontlist-v330.json
+2026-01-27 17:02:53 - app.api.main - INFO - [main.py:49] - <module>() - CORS middleware configured
+2026-01-27 17:02:54 - app.api.main - INFO - [main.py:68] - <module>() - All routers registered successfully
+2026-01-27 17:02:54 - app.api.main - INFO - [main.py:69] - <module>() - Application ready to handle requests
+2026-01-27 17:02:54 - app.api.main - INFO - [main.py:33] - startup_event() - Application startup initiated
+2026-01-27 17:02:54 - app.api.main - INFO - [main.py:34] - startup_event() - Registering API routers...
+2026-01-27 17:07:03 - app.api.main - INFO - [main.py:39] - shutdown_event() - Application shutdown initiated
+2026-01-27 17:07:03 - root - INFO - [logging_config.py:71] - setup_logging() - ================================================================================
+2026-01-27 17:07:03 - root - INFO - [logging_config.py:72] - setup_logging() - Logging system initialized at 2026-01-27 17:07:03.688831
+2026-01-27 17:07:03 - root - INFO - [logging_config.py:73] - setup_logging() - Log directory: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs
+2026-01-27 17:07:03 - root - INFO - [logging_config.py:74] - setup_logging() - Main log file: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs/app.log
+2026-01-27 17:07:03 - root - INFO - [logging_config.py:75] - setup_logging() - Error log file: /media/varun/varun/work/final_hr_agents_with_ui/payroll_agent/payroll_backend/logs/error.log
+2026-01-27 17:07:03 - root - INFO - [logging_config.py:76] - setup_logging() - Max log size: 10.0 MB
+2026-01-27 17:07:03 - root - INFO - [logging_config.py:77] - setup_logging() - Backup count: 5
+2026-01-27 17:07:03 - root - INFO - [logging_config.py:78] - setup_logging() - ================================================================================
+2026-01-27 17:07:04 - matplotlib - DEBUG - [__init__.py:337] - wrapper() - matplotlib data path: /home/varun/miniconda3/envs/image_gen/lib/python3.9/site-packages/matplotlib/mpl-data
+2026-01-27 17:07:04 - matplotlib - DEBUG - [__init__.py:337] - wrapper() - CONFIGDIR=/home/varun/.config/matplotlib
+2026-01-27 17:07:04 - matplotlib - DEBUG - [__init__.py:1498] - <module>() - interactive is False
+2026-01-27 17:07:04 - matplotlib - DEBUG - [__init__.py:1499] - <module>() - platform is linux
+2026-01-27 17:07:04 - matplotlib - DEBUG - [__init__.py:337] - wrapper() - CACHEDIR=/home/varun/.cache/matplotlib
+2026-01-27 17:07:04 - matplotlib.font_manager - DEBUG - [font_manager.py:1574] - _load_fontmanager() - Using fontManager instance from /home/varun/.cache/matplotlib/fontlist-v330.json
+2026-01-27 17:07:05 - app.api.main - INFO - [main.py:49] - <module>() - CORS middleware configured
+2026-01-27 17:07:05 - app.api.main - INFO - [main.py:68] - <module>() - All routers registered successfully
+2026-01-27 17:07:05 - app.api.main - INFO - [main.py:69] - <module>() - Application ready to handle requests
+2026-01-27 17:07:05 - app.api.main - INFO - [main.py:33] - startup_event() - Application startup initiated
+2026-01-27 17:07:05 - app.api.main - INFO - [main.py:34] - startup_event() - Registering API routers...
