@@ -2257,3 +2257,12 @@ NameError: name 'time' is not defined
 2026-01-27 21:34:43 - app.api.face_recognition - INFO - [face_recognition.py:290] - test_punch() - [TEST_PUNCH] Calling AttendanceService.process_punch | employee_id=36 | event_time=2026-01-27T03:35:00+00:00
 2026-01-27 21:34:44 - app.api.face_recognition - INFO - [face_recognition.py:309] - test_punch() - [TEST_PUNCH] process_punch completed | duration=1.19s | result={'ignored': True, 'reason': 'duplicate_punch'}
 2026-01-27 21:34:44 - app.api.face_recognition - WARNING - [face_recognition.py:316] - test_punch() - [TEST_PUNCH] Punch ignored | employee_id=36 | reason=duplicate_punch
+2026-01-27 21:45:16 - app.api.face_recognition - WARNING - [face_recognition.py:254] - test_punch() - [TEST_PUNCH] Request received | employee_id=36 | raw_event_time=2026-01-27 02:16:00+00:00 | server_received_at=2026-01-27T16:15:16.884619+00:00
+2026-01-27 21:45:16 - app.api.face_recognition - INFO - [face_recognition.py:281] - test_punch() - [TEST_PUNCH] Parsed event_time accepted | event_time=2026-01-27T02:16:00+00:00 | tzinfo=UTC
+2026-01-27 21:45:16 - app.api.face_recognition - INFO - [face_recognition.py:290] - test_punch() - [TEST_PUNCH] Calling AttendanceService.process_punch | employee_id=36 | event_time=2026-01-27T02:16:00+00:00
+2026-01-27 21:45:35 - app.api.face_recognition - INFO - [face_recognition.py:309] - test_punch() - [TEST_PUNCH] process_punch completed | duration=18.93s | result={'action': 'check_in'}
+2026-01-27 21:45:35 - app.api.face_recognition - INFO - [face_recognition.py:329] - test_punch() - [TEST_PUNCH] Punch successful | employee_id=36 | action=check_in
+2026-01-27 21:47:08 - app.api.face_recognition - WARNING - [face_recognition.py:254] - test_punch() - [TEST_PUNCH] Request received | employee_id=36 | raw_event_time=2026-01-27 02:00:00+00:00 | server_received_at=2026-01-27T16:17:08.878488+00:00
+2026-01-27 21:47:08 - app.api.face_recognition - INFO - [face_recognition.py:281] - test_punch() - [TEST_PUNCH] Parsed event_time accepted | event_time=2026-01-27T02:00:00+00:00 | tzinfo=UTC
+2026-01-27 21:47:08 - app.api.face_recognition - INFO - [face_recognition.py:290] - test_punch() - [TEST_PUNCH] Calling AttendanceService.process_punch | employee_id=36 | event_time=2026-01-27T02:00:00+00:00
+2026-01-27 21:47:14 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Early check-in too early (max 75 minutes allowed)

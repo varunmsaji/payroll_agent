@@ -164,3 +164,4 @@ NameError: name 'time' is not defined
 2026-01-27 20:06:53 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
 2026-01-27 21:16:17 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
 2026-01-27 21:33:47 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-27 21:47:14 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Early check-in too early (max 75 minutes allowed)
