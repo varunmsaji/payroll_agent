@@ -6,7 +6,7 @@ from app.database.attendence import AttendanceDB, AttendanceEventDB, HolidayDB, 
 from app.services.attendence.engine import AttendanceEngine
 from app.services.attendence.exceptions import AttendanceRejected
 from app.services.attendence.policy import AttendancePolicyDB
-
+import math
 IST = ZoneInfo("Asia/Kolkata")
 UTC = ZoneInfo("UTC")
 
@@ -64,7 +64,9 @@ class AttendanceService:
             # EARLY CHECK-IN HANDLING
             # -----------------------------
             if not state["checked_in"] and event_time < shift_start:
-                early_minutes = int((shift_start - event_time).total_seconds() / 60)
+                early_minutes = math.ceil(
+    (shift_start - event_time).total_seconds() / 60
+)
 
                 grace = int(shift.get("early_overtime_grace_minutes", 0))
                 max_early = int(shift.get("early_overtime_max_minutes", 0))

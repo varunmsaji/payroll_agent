@@ -169,3 +169,17 @@ NameError: name 'time' is not defined
 2026-01-27 21:55:21 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
 2026-01-27 21:57:00 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
 2026-01-27 22:06:35 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Early check-in too early (max 75 minutes allowed)
+2026-01-27 22:19:33 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-27 22:32:34 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Early check-in too early (max 75 minutes allowed)
+2026-01-28 10:04:43 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-28 10:09:54 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-28 10:10:00 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-28 10:10:36 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-28 10:10:42 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-28 10:10:50 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-28 10:11:25 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-28 10:11:31 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-28 10:12:07 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-28 10:12:13 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-28 10:13:35 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
+2026-01-28 10:13:41 - app.api.face_recognition - ERROR - [face_recognition.py:344] - test_punch() - [TEST_PUNCH] AttendanceException | employee_id=36 | error=Late check-in not allowed after 09:15
