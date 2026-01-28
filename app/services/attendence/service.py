@@ -50,75 +50,119 @@ class AttendanceService:
         # -------------------------------------------------
         # SHIFT WINDOW
         # -------------------------------------------------
-        if shift:
-            shift_start_local = datetime.combine(dt_local, shift["start_time"])
-            shift_start = shift_start_local.replace(tzinfo=IST).astimezone(UTC)
+        if not shift:
+            raise AttendanceRejected("No active shift assigned")
 
-            shift_end_local = datetime.combine(dt_local, shift["end_time"])
-            shift_end = shift_end_local.replace(tzinfo=IST).astimezone(UTC)
+        shift_start = datetime.combine(
+            dt_local, shift["start_time"]
+        ).replace(tzinfo=IST).astimezone(UTC)
 
-            if shift_end <= shift_start:
-                shift_end += timedelta(days=1)
+        shift_end = datetime.combine(
+            dt_local, shift["end_time"]
+        ).replace(tzinfo=IST).astimezone(UTC)
 
-            # -----------------------------
-            # EARLY CHECK-IN HANDLING
-            # -----------------------------
-            if not state["checked_in"] and event_time < shift_start:
-                early_minutes = math.ceil(
-    (shift_start - event_time).total_seconds() / 60
-)
+        if shift_end <= shift_start:
+            shift_end += timedelta(days=1)
 
-                grace = int(shift.get("early_overtime_grace_minutes", 0))
-                max_early = int(shift.get("early_overtime_max_minutes", 0))
+        # -------------------------------------------------
+        # EARLY CHECK-IN HANDLING
+        # -------------------------------------------------
+        if not state["checked_in"] and event_time < shift_start:
+            early_minutes = math.ceil(
+                (shift_start - event_time).total_seconds() / 60
+            )
 
-                # 🟢 Within early grace → normal check-in
-                if early_minutes <= grace:
-                    pass
+            grace = int(shift.get("early_overtime_grace_minutes", 0))
+            max_early = int(shift.get("early_overtime_max_minutes", 0))
 
-                # 🟡 Early overtime window
-                elif early_minutes <= grace + max_early:
-                    if not shift.get("allow_early_overtime", False):
-                        raise AttendanceRejected("Early check-in not allowed")
+            if early_minutes <= grace:
+                pass  # allowed
 
-                    overtime_minutes = early_minutes - grace
+            elif early_minutes <= grace + max_early:
+                if not shift.get("allow_early_overtime", False):
+                    raise AttendanceRejected("Early check-in not allowed")
 
-                    if shift.get("early_overtime_requires_approval", False):
-                        meta["early_overtime_pending"] = True
-                        meta["early_overtime_minutes"] = overtime_minutes
+                overtime_minutes = early_minutes - grace
 
-                # 🔴 Too early
-                else:
-                    raise AttendanceRejected(
-                        f"Early check-in too early (max {grace + max_early} minutes allowed)"
-                    )
+                if shift.get("early_overtime_requires_approval", False):
+                    meta["early_overtime_pending"] = True
+                    meta["early_overtime_minutes"] = overtime_minutes
 
-            # -----------------------------
-            # LATE CHECK-IN HANDLING
-            # -----------------------------
-            late_grace = int(shift.get("late_grace_minutes", 0))
-            latest_allowed = shift_start + timedelta(minutes=late_grace)
-
-            if (
-                not state["checked_in"]
-                and event_time >= shift_start
-                and event_time > latest_allowed
-            ):
+            else:
                 raise AttendanceRejected(
-                    f"Late check-in not allowed after "
-                    f"{latest_allowed.astimezone(IST).strftime('%H:%M')}"
+                    f"Early check-in too early (max {grace + max_early} minutes allowed)"
                 )
 
         # -------------------------------------------------
-        # STATE MACHINE (NO BREAK FSM YET)
+        # LATE CHECK-IN HANDLING
+        # -------------------------------------------------
+        late_grace = int(shift.get("late_grace_minutes", 0))
+        latest_allowed = shift_start + timedelta(minutes=late_grace)
+
+        if (
+            not state["checked_in"]
+            and event_time >= shift_start
+            and event_time > latest_allowed
+        ):
+            raise AttendanceRejected(
+                f"Late check-in not allowed after "
+                f"{latest_allowed.astimezone(IST).strftime('%H:%M')}"
+            )
+
+        # -------------------------------------------------
+        # BREAK FSM v1
+        # -------------------------------------------------
+        break_start_time = shift.get("break_start")
+        break_end_time = shift.get("break_end")
+        break_grace = int(shift.get("break_grace_minutes", 0))
+
+        break_window_start = break_window_end = None
+
+        if break_start_time and break_end_time:
+            bw_start = datetime.combine(dt_local, break_start_time)
+            bw_end = datetime.combine(dt_local, break_end_time)
+
+            break_window_start = (
+                bw_start - timedelta(minutes=break_grace)
+            ).replace(tzinfo=IST).astimezone(UTC)
+
+            break_window_end = (
+                bw_end + timedelta(minutes=break_grace)
+            ).replace(tzinfo=IST).astimezone(UTC)
+
+        # -------------------------------------------------
+        # FSM DECISION
         # -------------------------------------------------
         if not state["checked_in"]:
             action = "check_in"
 
-        elif shift and shift_end and event_time >= shift_end:
-            action = "check_out"
+        elif state["checked_in"] and not state["on_break"]:
+            # Possible break start
+            if (
+                break_window_start
+                and break_window_end
+                and break_window_start <= event_time <= break_window_end
+            ):
+                action = "break_start"
+
+            elif event_time >= shift_end:
+                action = "check_out"
+
+            else:
+                raise AttendanceRejected("Invalid punch sequence")
+
+        elif state["on_break"]:
+            if (
+                break_window_start
+                and break_window_end
+                and break_window_start <= event_time <= break_window_end
+            ):
+                action = "break_end"
+            else:
+                raise AttendanceRejected("Break end outside allowed window")
 
         else:
-            action = "check_out"
+            raise AttendanceRejected("Invalid attendance state")
 
         # -------------------------------------------------
         # SAVE EVENT
@@ -134,6 +178,7 @@ class AttendanceService:
         cls.recalculate_for_date(employee_id, dt_local)
 
         return {"action": action}
+
 
 
     # ==================================================
